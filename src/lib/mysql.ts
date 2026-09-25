@@ -16,12 +16,11 @@ export interface AssignmentRecord extends RowDataPacket {
   name: string;
   description: string;
   feedback: string | null;
-  user_id: number | null;
   status: number;
   facility: string;
   end_date: string;
   date_created: string;
-  important: boolean;
+  important: 0 | 1 | 2;
 }
 
 export interface FacilityRecord extends RowDataPacket {
@@ -44,11 +43,10 @@ export interface AssignmentInput {
   name: string;
   description: string;
   feedback?: string | null;
-  user_id?: number | null;
   status?: number;
   facility: string;
   end_date: string;
-  important?: boolean;
+  important?: 0 | 1 | 2;
 }
 
 export interface FacilityInput {
@@ -113,23 +111,16 @@ export async function createTables(): Promise<void> {
       name VARCHAR(255) NOT NULL,
       description TEXT NOT NULL,
       feedback TEXT,
-      user_id INT NULL,
       status INT NOT NULL DEFAULT 0,
       facility VARCHAR(150) NOT NULL,
       end_date DATETIME NOT NULL,
       date_created DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      important BOOLEAN NOT NULL DEFAULT FALSE,
+      important TINYINT NOT NULL DEFAULT 0,
       PRIMARY KEY (id)
     )
   `);
 
-  try {
-    await database.execute("ALTER TABLE assignments ADD COLUMN user_id INT NULL");
-  } catch (error) {
-    if (!(error instanceof Error) || !error.message.includes("Duplicate column name")) {
-      throw error;
-    }
-  }
+  await database.execute("ALTER TABLE assignments MODIFY important TINYINT NOT NULL DEFAULT 0");
 
   await database.execute(`
     CREATE TABLE IF NOT EXISTS facilities (
@@ -240,13 +231,12 @@ export async function getAssignmentById(id: number): Promise<AssignmentRecord | 
 export async function createAssignment(assignment: AssignmentInput): Promise<AssignmentRecord | null> {
   const [result] = await getPool().execute<ResultSetHeader>(
     `INSERT INTO assignments
-      (name, description, feedback, user_id, status, facility, end_date, important)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      (name, description, feedback, status, facility, end_date, important)
+      VALUES (?, ?, ?, ?, ?, ?, ?)`,
     [
       assignment.name,
       assignment.description,
       assignment.feedback ?? null,
-      assignment.user_id ?? null,
       assignment.status ?? 0,
       assignment.facility,
       assignment.end_date,
@@ -263,14 +253,13 @@ export async function updateAssignment(
 ): Promise<AssignmentRecord | null> {
   const [result] = await getPool().execute<ResultSetHeader>(
     `UPDATE assignments
-      SET name = ?, description = ?, feedback = ?, user_id = ?, status = ?,
+      SET name = ?, description = ?, feedback = ?, status = ?,
           facility = ?, end_date = ?, important = ?
       WHERE id = ?`,
     [
       assignment.name,
       assignment.description,
       assignment.feedback ?? null,
-      assignment.user_id ?? null,
       assignment.status ?? 0,
       assignment.facility,
       assignment.end_date,
@@ -280,6 +269,66 @@ export async function updateAssignment(
   );
 
   return result.affectedRows > 0 ? getAssignmentById(id) : null;
+}
+
+export async function updateAssignmentStatus(id: number, status: number): Promise<AssignmentRecord | null> {
+  if (!Number.isInteger(status) || status < 0 || status > 3) {
+    throw new Error("Assignment status must be an integer from 0 to 3");
+  }
+
+  const existingAssignment = await getAssignmentById(id);
+  if (!existingAssignment) {
+    return null;
+  }
+
+  await getPool().execute(
+    "UPDATE assignments SET status = ? WHERE id = ?",
+    [status, id],
+  );
+
+  return getAssignmentById(id);
+}
+
+export async function updateAssignmentFeedback(id: number, feedback: string): Promise<AssignmentRecord | null> {
+  const existingAssignment = await getAssignmentById(id);
+  if (!existingAssignment) {
+    return null;
+  }
+
+  await getPool().execute(
+    "UPDATE assignments SET feedback = ? WHERE id = ?",
+    [feedback, id],
+  );
+
+  return getAssignmentById(id);
+}
+
+export async function updateAssignmentDetails(id: number, description: string, endDate: string): Promise<AssignmentRecord | null> {
+  const existingAssignment = await getAssignmentById(id);
+  if (!existingAssignment) return null;
+  await getPool().execute("UPDATE assignments SET description = ?, end_date = ? WHERE id = ?", [description, endDate, id]);
+  return getAssignmentById(id);
+}
+
+export async function notifyAssignment(id: number): Promise<AssignmentRecord | null> {
+  const existingAssignment = await getAssignmentById(id);
+  if (!existingAssignment) return null;
+  const notification = "<#NOTIFICATION#>Notification waiting for response<(#NOTIFICATION#)>";
+  const feedback = existingAssignment.feedback?.trim();
+  const nextFeedback = feedback?.includes(notification) ? feedback : `${feedback ? `${feedback}\n` : ""}${notification}`;
+  await getPool().execute("UPDATE assignments SET feedback = ?, important = 1 WHERE id = ?", [nextFeedback, id]);
+  return getAssignmentById(id);
+}
+
+export async function acknowledgeAssignmentNotification(id: number): Promise<AssignmentRecord | null> {
+  const existingAssignment = await getAssignmentById(id);
+  if (!existingAssignment) return null;
+  const feedback = existingAssignment.feedback?.replace(
+    /<#NOTIFICATION#>Notification waiting for response<\(#NOTIFICATION#\)>/g,
+    "<#NOTIFICATION#>Notification received<(#NOTIFICATION#)>",
+  );
+  await getPool().execute("UPDATE assignments SET feedback = ?, important = 0 WHERE id = ?", [feedback ?? null, id]);
+  return getAssignmentById(id);
 }
 
 export async function deleteAssignment(id: number): Promise<boolean> {
@@ -353,6 +402,8 @@ export const assignments = {
   getById: getAssignmentById,
   create: createAssignment,
   update: updateAssignment,
+  updateStatus: updateAssignmentStatus,
+  updateFeedback: updateAssignmentFeedback,
   remove: deleteAssignment,
 };
 
