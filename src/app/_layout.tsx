@@ -25,7 +25,13 @@ function RootNavigator() {
       </Stack.Protected>
 
       <Stack.Protected guard={!session}>
-        <Stack.Screen name="sign-in" />
+        <Stack.Screen
+          name="sign-in"
+          options={{
+            // Hide the header for this route
+            headerShown: false,
+          }}
+        />
       </Stack.Protected>
     </Stack>
   );
