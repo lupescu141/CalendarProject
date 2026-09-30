@@ -2,6 +2,7 @@ import { Image } from "expo-image";
 import { router } from "expo-router";
 import { useState } from "react";
 import {
+  Pressable,
   StyleSheet,
   Text,
   TextInput,
@@ -11,8 +12,21 @@ import { useSession } from "../ctx";
 
 export default function SignIn() {
   const { signIn } = useSession();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [emailInputFocused, setIsEmailFocused] = useState(false);
   const [passwordInputFocused, setIsPasswordFocused] = useState(false);
+  const [buttonisHovered, setIsButtonHovered] = useState(false);
+
+  const handleButtonHover = () => {
+    setIsButtonHovered(true);
+  };
+
+  const handleButtonLeave = () => {
+    setIsButtonHovered(false);
+  };
 
   const handleEmailFocus = () => {
     setIsEmailFocused(true);
@@ -40,13 +54,20 @@ export default function SignIn() {
       </View>
 
       <View style={styles.input_container}>
+        <Text style={styles.input_header}>Email</Text>
         <TextInput
           placeholder="Email"
+          autoCapitalize="none"
+          autoComplete="email"
+          keyboardType="email-address"
           textContentType="emailAddress"
+          value={email}
+          onChangeText={setEmail}
           onFocus={handleEmailFocus}
           onBlur={handleEmailBlur}
           style={[styles.input_box, emailInputFocused && styles.isFocused]}
         />
+        <Text style={styles.input_header}>Password</Text>
         <TextInput
           placeholder="Password"
           textContentType="password"
@@ -54,19 +75,36 @@ export default function SignIn() {
           onBlur={handlePasswordBlur}
           style={[styles.input_box, passwordInputFocused && styles.isFocused]}
           secureTextEntry
+          value={password}
+          onChangeText={setPassword}
         />
       </View>
 
-      <Text
-        style={styles.login_button}
-        onPress={() => {
-          signIn();
-          // Navigate after signing in. You may want to tweak this to ensure sign-in is successful before navigating.
-          router.replace("/(app)/calendar");
+      {!!error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
+
+      <Pressable
+        disabled={isSubmitting}
+        onPress={async () => {
+          setError("");
+          setIsSubmitting(true);
+          try {
+            await signIn({ email, password });
+            router.replace("/(app)/calendar");
+          } catch (signInError) {
+            setError(signInError instanceof Error ? signInError.message : "Sign in failed.");
+          } finally {
+            setIsSubmitting(false);
+          }
         }}
+        onHoverIn={handleButtonHover}
+        onHoverOut={handleButtonLeave}
+        style={[
+          styles.login_button,
+          buttonisHovered && { backgroundColor: "#B53A33" },
+        ]}
       >
-        Sign In
-      </Text>
+        <Text style={styles.login_label}>{isSubmitting ? "Signing in..." : "Sign In"}</Text>
+      </Pressable>
     </View>
   );
 }
@@ -92,6 +130,15 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
+  input_header: {
+    fontSize: 16,
+    fontWeight: "bold",
+    marginBottom: 8,
+    color: "#333333",
+    alignSelf: "flex-start",
+    marginLeft: "10%",
+  },
+
   input_box: {
     width: "80%",
     height: 40,
@@ -117,8 +164,16 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 20,
     borderRadius: 5,
+  },
+  login_label: {
     color: "#FFFFFF",
     fontSize: 16,
     fontWeight: "bold",
+  },
+  error: {
+    color: "#B53A33",
+    marginBottom: 12,
+    maxWidth: "80%",
+    textAlign: "center",
   },
 });

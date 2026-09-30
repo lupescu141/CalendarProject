@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 
-import { acknowledgeAssignmentNotification, createAssignment, createTables, listAssignments, listUsers, notifyAssignment, updateAssignmentDetails, updateAssignmentFeedback, updateAssignmentStatus } from "../src/lib/mysql";
+import { acknowledgeAssignmentNotification, acknowledgeUserAssignmentNotification, appendUserAssignmentMessage, createAssignment, createTables, listAssignments, listUserAssignments, listUserNotifications, listUsers, notifyAssignment, updateAssignmentDetails, updateAssignmentFeedback, updateAssignmentStatus } from "../src/lib/mysql";
 import { authenticateUser, createUser } from "../src/lib/passwordAuth";
 
 const port = Number(process.env.API_PORT || 3000);
@@ -74,6 +74,45 @@ const server = createServer(async (request, response) => {
       return;
     }
 
+    const userAssignmentsMatch = request.url?.match(/^\/users\/(\d+)\/assignments$/);
+    if (request.method === "GET" && userAssignmentsMatch) {
+      sendJson(response, 200, await listUserAssignments(Number(userAssignmentsMatch[1])));
+      return;
+    }
+
+    const userNotificationsMatch = request.url?.match(/^\/users\/(\d+)\/notifications$/);
+    if (request.method === "GET" && userNotificationsMatch) {
+      sendJson(response, 200, await listUserNotifications(Number(userNotificationsMatch[1])));
+      return;
+    }
+
+    const userMessageMatch = request.url?.match(/^\/users\/(\d+)\/assignments\/(\d+)\/messages$/);
+    if (request.method === "POST" && userMessageMatch) {
+      const body = await readBody(request);
+      if (typeof body.text !== "string" || !body.text.trim()) {
+        sendJson(response, 400, { error: "message text is required" });
+        return;
+      }
+
+      const assignment = await appendUserAssignmentMessage(
+        Number(userMessageMatch[2]),
+        Number(userMessageMatch[1]),
+        body.text,
+      );
+      sendJson(response, assignment ? 200 : 404, assignment || { error: "Assignment not found for this user" });
+      return;
+    }
+
+    const userNotificationSeenMatch = request.url?.match(/^\/users\/(\d+)\/assignments\/(\d+)\/notification-seen$/);
+    if (request.method === "PATCH" && userNotificationSeenMatch) {
+      const assignment = await acknowledgeUserAssignmentNotification(
+        Number(userNotificationSeenMatch[2]),
+        Number(userNotificationSeenMatch[1]),
+      );
+      sendJson(response, assignment ? 200 : 404, assignment || { error: "Assignment not found for this user" });
+      return;
+    }
+
     if (request.method === "GET" && request.url?.startsWith("/assignments?")) {
       const facility = new URL(request.url, `http://localhost:${port}`).searchParams.get("facility");
       sendJson(response, 200, await listAssignments(facility || undefined));
@@ -82,8 +121,8 @@ const server = createServer(async (request, response) => {
 
     if (request.method === "POST" && request.url === "/assignments") {
       const assignment = await readBody(request);
-      if (!assignment.name || !assignment.description || !assignment.facility || !assignment.end_date) {
-        sendJson(response, 400, { error: "name, description, facility, and end_date are required" });
+      if (!assignment.name || !assignment.description || !assignment.facility || !assignment.end_date || !Number.isInteger(assignment.assigned_to_user_id)) {
+        sendJson(response, 400, { error: "name, description, facility, end_date, and assigned_to_user_id are required" });
         return;
       }
 
