@@ -52,7 +52,7 @@ function getApiUrl() {
   return "http://localhost:3000";
 }
 
-async function request<T>(path: string, options?: RequestInit): Promise<T> {
+export async function apiRequest<T>(path: string, options?: RequestInit): Promise<T> {
   const url = `${getApiUrl()}${path}`;
   let response: Response;
   try {
@@ -73,42 +73,42 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 }
 
 export function listUsers(): Promise<UserRecord[]> {
-  return request<UserRecord[]>("/users");
+  return apiRequest<UserRecord[]>("/users");
 }
 
 export function listAssignments(facility: string): Promise<AssignmentRecord[]> {
-  return request<AssignmentRecord[]>(`/assignments?facility=${encodeURIComponent(facility)}`);
+  return apiRequest<AssignmentRecord[]>(`/assignments?facility=${encodeURIComponent(facility)}`);
 }
 
 export function updateAssignmentStatus(id: number, status: 0 | 1 | 2 | 3): Promise<AssignmentRecord> {
-  return request<AssignmentRecord>(`/assignments/${id}/status`, {
+  return apiRequest<AssignmentRecord>(`/assignments/${id}/status`, {
     body: JSON.stringify({ status }),
     method: "PATCH",
   });
 }
 
 export function createAssignment(assignment: AssignmentInput) {
-  return request("/assignments", {
+  return apiRequest("/assignments", {
     body: JSON.stringify(assignment),
     method: "POST",
   });
 }
 
 export function updateAssignmentFeedback(id: number, feedback: string): Promise<AssignmentRecord> {
-  return request<AssignmentRecord>(`/assignments/${id}/feedback`, {
+  return apiRequest<AssignmentRecord>(`/assignments/${id}/feedback`, {
     body: JSON.stringify({ feedback }),
     method: "PATCH",
   });
 }
 
 export function updateAssignmentDetails(id: number, description: string, end_date: string): Promise<AssignmentRecord> {
-  return request<AssignmentRecord>(`/assignments/${id}`, { body: JSON.stringify({ description, end_date }), method: "PATCH" });
+  return apiRequest<AssignmentRecord>(`/assignments/${id}`, { body: JSON.stringify({ description, end_date }), method: "PATCH" });
 }
 
 export function notifyAssignment(id: number): Promise<AssignmentRecord> {
-  return request<AssignmentRecord>(`/assignments/${id}/notify`, { method: "PATCH" });
+  return apiRequest<AssignmentRecord>(`/assignments/${id}/notify`, { method: "PATCH" });
 }
 
 export function acknowledgeAssignmentNotification(id: number): Promise<AssignmentRecord> {
-  return request<AssignmentRecord>(`/assignments/${id}/acknowledge`, { method: "PATCH" });
+  return apiRequest<AssignmentRecord>(`/assignments/${id}/acknowledge`, { method: "PATCH" });
 }

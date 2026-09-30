@@ -1,6 +1,7 @@
 import { createServer } from "node:http";
 
 import { acknowledgeAssignmentNotification, createAssignment, createTables, listAssignments, listUsers, notifyAssignment, updateAssignmentDetails, updateAssignmentFeedback, updateAssignmentStatus } from "../src/lib/mysql";
+import { authenticateUser, createUser } from "../src/lib/passwordAuth";
 
 const port = Number(process.env.API_PORT || 3000);
 
@@ -27,6 +28,47 @@ const server = createServer(async (request, response) => {
   }
 
   try {
+    if (request.method === "POST" && request.url === "/auth/sign-in") {
+      const body = await readBody(request);
+      if (typeof body.email !== "string" || typeof body.password !== "string" || !body.email.trim() || !body.password) {
+        sendJson(response, 400, { error: "email and password are required" });
+        return;
+      }
+
+      const user = await authenticateUser(body.email.trim(), body.password);
+      sendJson(response, user ? 200 : 401, user || { error: "Invalid email or password" });
+      return;
+    }
+
+    if (request.method === "POST" && request.url === "/auth/sign-up") {
+      const body = await readBody(request);
+      const fields = [body.firstname, body.surname, body.username, body.password, body.facility, body.email];
+      if (fields.some((value) => typeof value !== "string" || !value.trim()) || !/^\S+@\S+\.\S+$/.test(body.email)) {
+        sendJson(response, 400, { error: "firstname, surname, username, password, facility, and a valid email are required" });
+        return;
+      }
+
+      try {
+        const user = await createUser({
+          firstname: body.firstname.trim(),
+          surname: body.surname.trim(),
+          username: body.username.trim(),
+          password: body.password,
+          facility: body.facility.trim(),
+          email: body.email.trim(),
+          admin: false,
+        });
+        sendJson(response, 201, user);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ER_DUP_ENTRY") {
+          sendJson(response, 409, { error: "That username or email is already registered" });
+          return;
+        }
+        throw error;
+      }
+      return;
+    }
+
     if (request.method === "GET" && request.url === "/users") {
       sendJson(response, 200, await listUsers());
       return;

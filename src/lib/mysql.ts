@@ -142,7 +142,7 @@ export async function listUsers(): Promise<UserRecord[]> {
 
 export async function getUserById(id: number): Promise<UserRecord | null> {
   const [rows] = await getPool().execute<RowDataPacket[]>(
-    "SELECT id, firstname, surname, username, admin, facility, email, password FROM users WHERE id = ?",
+    "SELECT id, firstname, surname, username, admin, facility, email FROM users WHERE id = ?",
     [id],
   );
 
@@ -154,6 +154,16 @@ export async function getUserByUsername(username: string): Promise<UserRecord | 
   const [rows] = await getPool().execute<RowDataPacket[]>(
     "SELECT id, firstname, surname, username, admin, facility, email, password FROM users WHERE username = ?",
     [username],
+  );
+
+  const users = rows as UserRecord[];
+  return users[0] ?? null;
+}
+
+export async function getUserByEmail(email: string): Promise<UserRecord | null> {
+  const [rows] = await getPool().execute<RowDataPacket[]>(
+    "SELECT id, firstname, surname, username, admin, facility, email, password FROM users WHERE email = ?",
+    [email],
   );
 
   const users = rows as UserRecord[];
@@ -392,6 +402,7 @@ export const users = {
   list: listUsers,
   getById: getUserById,
   getByUsername: getUserByUsername,
+  getByEmail: getUserByEmail,
   create: createUser,
   update: updateUser,
   remove: deleteUser,
