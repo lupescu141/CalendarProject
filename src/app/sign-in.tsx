@@ -17,6 +17,15 @@ export default function SignIn() {
   const { signIn } = useSession();
   const [emailInputFocused, setIsEmailFocused] = useState(false);
   const [passwordInputFocused, setIsPasswordFocused] = useState(false);
+  const [buttonisHovered, setIsButtonHovered] = useState(false);
+
+  const handleButtonHover = () => {
+    setIsButtonHovered(true);
+  };
+
+  const handleButtonLeave = () => {
+    setIsButtonHovered(false);
+  };
 
   const handleEmailFocus = () => {
     setIsEmailFocused(true);
@@ -44,6 +53,7 @@ export default function SignIn() {
       </View>
 
       <View style={styles.input_container}>
+        <Text style={styles.input_header}>Email</Text>
         <TextInput
           placeholder="Email"
           textContentType="emailAddress"
@@ -51,6 +61,7 @@ export default function SignIn() {
           onBlur={handleEmailBlur}
           style={[styles.input_box, emailInputFocused && styles.isFocused]}
         />
+        <Text style={styles.input_header}>Password</Text>
         <TextInput
           placeholder="Password"
           textContentType="password"
@@ -61,16 +72,21 @@ export default function SignIn() {
         />
       </View>
 
-      <Text
-        style={styles.login_button}
+      <Pressable
         onPress={() => {
           signIn();
           // Navigate after signing in. You may want to tweak this to ensure sign-in is successful before navigating.
           router.replace("/(app)/calendar");
         }}
+        onHoverIn={handleButtonHover}
+        onHoverOut={handleButtonLeave}
+        style={[
+          styles.login_button,
+          buttonisHovered && { backgroundColor: "#B53A33" },
+        ]}
       >
-        Sign In
-      </Text>
+        <Text style={styles.login_label}>Sign In</Text>
+      </Pressable>
     </View>
   );
 }
@@ -96,6 +112,15 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
+  input_header: {
+    fontSize: 16,
+    fontWeight: "bold",
+    marginBottom: 8,
+    color: "#333333",
+    alignSelf: "flex-start",
+    marginLeft: "10%",
+  },
+
   input_box: {
     width: "80%",
     height: 40,
@@ -121,6 +146,8 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 20,
     borderRadius: 5,
+  },
+  login_label: {
     color: "#FFFFFF",
     fontSize: 16,
     fontWeight: "bold",
