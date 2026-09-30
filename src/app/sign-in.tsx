@@ -2,6 +2,7 @@ import { Image } from "expo-image";
 import { router } from "expo-router";
 import { useState } from "react";
 import {
+  Pressable,
   StyleSheet,
   Text,
   TextInput,
@@ -11,6 +12,10 @@ import { useSession } from "../ctx";
 
 export default function SignIn() {
   const { signIn } = useSession();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [emailInputFocused, setIsEmailFocused] = useState(false);
   const [passwordInputFocused, setIsPasswordFocused] = useState(false);
   const [buttonisHovered, setIsButtonHovered] = useState(false);
@@ -52,7 +57,12 @@ export default function SignIn() {
         <Text style={styles.input_header}>Email</Text>
         <TextInput
           placeholder="Email"
+          autoCapitalize="none"
+          autoComplete="email"
+          keyboardType="email-address"
           textContentType="emailAddress"
+          value={email}
+          onChangeText={setEmail}
           onFocus={handleEmailFocus}
           onBlur={handleEmailBlur}
           style={[styles.input_box, emailInputFocused && styles.isFocused]}
@@ -65,14 +75,26 @@ export default function SignIn() {
           onBlur={handlePasswordBlur}
           style={[styles.input_box, passwordInputFocused && styles.isFocused]}
           secureTextEntry
+          value={password}
+          onChangeText={setPassword}
         />
       </View>
 
+      {!!error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
+
       <Pressable
-        onPress={() => {
-          signIn();
-          // Navigate after signing in. You may want to tweak this to ensure sign-in is successful before navigating.
-          router.replace("/(app)/calendar");
+        disabled={isSubmitting}
+        onPress={async () => {
+          setError("");
+          setIsSubmitting(true);
+          try {
+            await signIn({ email, password });
+            router.replace("/(app)/calendar");
+          } catch (signInError) {
+            setError(signInError instanceof Error ? signInError.message : "Sign in failed.");
+          } finally {
+            setIsSubmitting(false);
+          }
         }}
         onHoverIn={handleButtonHover}
         onHoverOut={handleButtonLeave}
@@ -81,7 +103,7 @@ export default function SignIn() {
           buttonisHovered && { backgroundColor: "#B53A33" },
         ]}
       >
-        <Text style={styles.login_label}>Sign In</Text>
+        <Text style={styles.login_label}>{isSubmitting ? "Signing in..." : "Sign In"}</Text>
       </Pressable>
     </View>
   );
@@ -147,5 +169,11 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 16,
     fontWeight: "bold",
+  },
+  error: {
+    color: "#B53A33",
+    marginBottom: 12,
+    maxWidth: "80%",
+    textAlign: "center",
   },
 });

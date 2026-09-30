@@ -12,6 +12,7 @@ export interface UserRecord {
 }
 
 export interface AssignmentInput {
+  assigned_to_user_id: number;
   name: string;
   description: string;
   facility: string;
@@ -78,6 +79,27 @@ export function listUsers(): Promise<UserRecord[]> {
 
 export function listAssignments(facility: string): Promise<AssignmentRecord[]> {
   return apiRequest<AssignmentRecord[]>(`/assignments?facility=${encodeURIComponent(facility)}`);
+}
+
+export function listUserAssignments(userId: number): Promise<AssignmentRecord[]> {
+  return apiRequest<AssignmentRecord[]>(`/users/${userId}/assignments`);
+}
+
+export function listUserNotifications(userId: number): Promise<AssignmentRecord[]> {
+  return apiRequest<AssignmentRecord[]>(`/users/${userId}/notifications`);
+}
+
+export function appendUserAssignmentMessage(userId: number, assignmentId: number, text: string): Promise<AssignmentRecord> {
+  return apiRequest<AssignmentRecord>(`/users/${userId}/assignments/${assignmentId}/messages`, {
+    body: JSON.stringify({ text }),
+    method: "POST",
+  });
+}
+
+export function acknowledgeUserNotification(userId: number, assignmentId: number): Promise<AssignmentRecord> {
+  return apiRequest<AssignmentRecord>(`/users/${userId}/assignments/${assignmentId}/notification-seen`, {
+    method: "PATCH",
+  });
 }
 
 export function updateAssignmentStatus(id: number, status: 0 | 1 | 2 | 3): Promise<AssignmentRecord> {

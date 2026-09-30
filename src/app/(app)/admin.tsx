@@ -182,6 +182,7 @@ export default function Admin() {
     setMessage("");
     try {
       await createAssignment({
+        assigned_to_user_id: selectedUser.id,
         description: description.trim(),
         end_date: `${dueDate} 23:59:59`,
         facility: selectedUser.facility,

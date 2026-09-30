@@ -12,6 +12,7 @@ export interface UserRecord extends RowDataPacket {
 }
 
 export interface AssignmentRecord extends RowDataPacket {
+  assigned_to_user_id: number | null;
   id: number;
   name: string;
   description: string;
@@ -40,6 +41,7 @@ export interface UserInput {
 }
 
 export interface AssignmentInput {
+  assigned_to_user_id: number;
   name: string;
   description: string;
   feedback?: string | null;
@@ -116,11 +118,17 @@ export async function createTables(): Promise<void> {
       end_date DATETIME NOT NULL,
       date_created DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       important TINYINT NOT NULL DEFAULT 0,
+      assigned_to_user_id INT NULL,
       PRIMARY KEY (id)
     )
   `);
 
   await database.execute("ALTER TABLE assignments MODIFY important TINYINT NOT NULL DEFAULT 0");
+  try {
+    await database.execute("ALTER TABLE assignments ADD COLUMN assigned_to_user_id INT NULL");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ER_DUP_FIELDNAME") throw error;
+  }
 
   await database.execute(`
     CREATE TABLE IF NOT EXISTS facilities (
@@ -228,6 +236,24 @@ export async function listAssignments(facility?: string): Promise<AssignmentReco
   return rows as AssignmentRecord[];
 }
 
+export async function listUserAssignments(userId: number): Promise<AssignmentRecord[]> {
+  const [rows] = await getPool().execute<RowDataPacket[]>(
+    "SELECT * FROM assignments WHERE assigned_to_user_id = ? ORDER BY end_date ASC",
+    [userId],
+  );
+
+  return rows as AssignmentRecord[];
+}
+
+export async function listUserNotifications(userId: number): Promise<AssignmentRecord[]> {
+  const [rows] = await getPool().execute<RowDataPacket[]>(
+    "SELECT * FROM assignments WHERE assigned_to_user_id = ? AND important = 1 ORDER BY end_date ASC",
+    [userId],
+  );
+
+  return rows as AssignmentRecord[];
+}
+
 export async function getAssignmentById(id: number): Promise<AssignmentRecord | null> {
   const [rows] = await getPool().execute<RowDataPacket[]>(
     "SELECT * FROM assignments WHERE id = ?",
@@ -241,8 +267,8 @@ export async function getAssignmentById(id: number): Promise<AssignmentRecord | 
 export async function createAssignment(assignment: AssignmentInput): Promise<AssignmentRecord | null> {
   const [result] = await getPool().execute<ResultSetHeader>(
     `INSERT INTO assignments
-      (name, description, feedback, status, facility, end_date, important)
-      VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      (name, description, feedback, status, facility, end_date, important, assigned_to_user_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       assignment.name,
       assignment.description,
@@ -251,6 +277,7 @@ export async function createAssignment(assignment: AssignmentInput): Promise<Ass
       assignment.facility,
       assignment.end_date,
       assignment.important ?? false,
+      assignment.assigned_to_user_id,
     ],
   );
 
@@ -313,6 +340,26 @@ export async function updateAssignmentFeedback(id: number, feedback: string): Pr
   return getAssignmentById(id);
 }
 
+export async function appendUserAssignmentMessage(
+  id: number,
+  userId: number,
+  message: string,
+): Promise<AssignmentRecord | null> {
+  const existingAssignment = await getAssignmentById(id);
+  if (!existingAssignment || existingAssignment.assigned_to_user_id !== userId) return null;
+
+  const formattedMessage = `<#USER#>${message.trim()}<(#USER#)>`;
+  await getPool().execute(
+    `UPDATE assignments
+      SET feedback = CONCAT(COALESCE(NULLIF(feedback, ''), ''),
+        CASE WHEN feedback IS NULL OR feedback = '' THEN '' ELSE '\\n' END, ?)
+      WHERE id = ? AND assigned_to_user_id = ?`,
+    [formattedMessage, id, userId],
+  );
+
+  return getAssignmentById(id);
+}
+
 export async function updateAssignmentDetails(id: number, description: string, endDate: string): Promise<AssignmentRecord | null> {
   const existingAssignment = await getAssignmentById(id);
   if (!existingAssignment) return null;
@@ -338,6 +385,25 @@ export async function acknowledgeAssignmentNotification(id: number): Promise<Ass
     "<#NOTIFICATION#>Notification received<(#NOTIFICATION#)>",
   );
   await getPool().execute("UPDATE assignments SET feedback = ?, important = 0 WHERE id = ?", [feedback ?? null, id]);
+  return getAssignmentById(id);
+}
+
+export async function acknowledgeUserAssignmentNotification(
+  id: number,
+  userId: number,
+): Promise<AssignmentRecord | null> {
+  const existingAssignment = await getAssignmentById(id);
+  if (!existingAssignment || existingAssignment.assigned_to_user_id !== userId) return null;
+
+  await getPool().execute(
+    `UPDATE assignments
+      SET feedback = REPLACE(COALESCE(feedback, ''),
+        '<#NOTIFICATION#>Notification waiting for response<(#NOTIFICATION#)>',
+        '<#NOTIFICATION#>Notification received<(#NOTIFICATION#)>'), important = 0
+      WHERE id = ? AND assigned_to_user_id = ?`,
+    [id, userId],
+  );
+
   return getAssignmentById(id);
 }
 

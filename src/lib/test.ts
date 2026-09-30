@@ -37,6 +37,7 @@ export async function main(): Promise<void> {
       .replace("T", " ");
 
     const assignment = await database.assignments.create({
+      assigned_to_user_id: user.id,
       name: `Test Assignment ${timestamp}`,
       description: "Test assignment description",
       feedback: "Test feedback",
