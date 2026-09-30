@@ -109,10 +109,10 @@ export async function createUser(user: database.UserInput): Promise<database.Use
 }
 
 export async function authenticateUser(
-  username: string,
+  email: string,
   password: string,
 ): Promise<Omit<database.UserRecord, "password"> | null> {
-  const user = await database.users.getByUsername(username);
+  const user = await database.users.getByEmail(email);
 
   if (!user || !(await verifyPassword(password, user.password ?? null))) {
     return null;

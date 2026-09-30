@@ -1,17 +1,13 @@
+import { Image } from "expo-image";
 import { router } from "expo-router";
+import { useState } from "react";
 import {
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
-  View,
+  View
 } from "react-native";
-import { Image } from "expo-image";
 import { useSession } from "../ctx";
-import { useState } from "react";
 
 export default function SignIn() {
   const { signIn } = useSession();
