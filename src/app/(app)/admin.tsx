@@ -2,6 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { useSession } from "../../ctx";
 import { acknowledgeAssignmentNotification, createAssignment, listAssignments, listUsers, notifyAssignment, updateAssignmentDetails, updateAssignmentFeedback, updateAssignmentStatus, type AssignmentRecord, type UserRecord } from "../../lib/adminApi";
 
 const today = new Date();
@@ -37,6 +38,7 @@ function formatCreatedDate(value: string) {
 
 export default function Admin() {
   const router = useRouter();
+  const { signOut } = useSession();
   const [users, setUsers] = useState<UserRecord[]>([]);
   const [selectedUser, setSelectedUser] = useState<UserRecord | null>(null);
   const [assignmentName, setAssignmentName] = useState("");
@@ -200,7 +202,7 @@ export default function Admin() {
   return (
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       <View style={styles.header}>
-        <Pressable accessibilityLabel="Go back" accessibilityRole="button" hitSlop={8} onPress={() => router.back()}>
+        <Pressable accessibilityLabel="Sign out and return to sign in" accessibilityRole="button" hitSlop={8} onPress={() => { signOut(); router.replace("/sign-in"); }}>
           <Ionicons name="arrow-back" size={22} color="#111111" />
         </Pressable>
         <Text style={styles.brandName}><Text style={styles.brandFirst}>first</Text><Text style={styles.brandStop}>stop</Text></Text>
