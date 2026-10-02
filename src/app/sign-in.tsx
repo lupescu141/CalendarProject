@@ -1,13 +1,7 @@
 import { Image } from "expo-image";
 import { router } from "expo-router";
 import { useState } from "react";
-import {
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View
-} from "react-native";
+import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSession } from "../ctx";
 
 export default function SignIn() {
@@ -50,7 +44,7 @@ export default function SignIn() {
           source={require("../assets/images/logo.svg")}
           style={styles.logo}
         />
-        <Text style={styles.logo_undertext}>VUOSIKELLO</Text>
+        <Text style={styles.logo_undertext}>VUOSIRENGAS</Text>
       </View>
 
       <View style={styles.input_container}>
@@ -80,7 +74,11 @@ export default function SignIn() {
         />
       </View>
 
-      {!!error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
+      {!!error && (
+        <Text accessibilityRole="alert" style={styles.error}>
+          {error}
+        </Text>
+      )}
 
       <Pressable
         disabled={isSubmitting}
@@ -91,7 +89,11 @@ export default function SignIn() {
             await signIn({ email, password });
             router.replace("/(app)/calendar");
           } catch (signInError) {
-            setError(signInError instanceof Error ? signInError.message : "Sign in failed.");
+            setError(
+              signInError instanceof Error
+                ? signInError.message
+                : "Sign in failed.",
+            );
           } finally {
             setIsSubmitting(false);
           }
@@ -103,7 +105,9 @@ export default function SignIn() {
           buttonisHovered && { backgroundColor: "#B53A33" },
         ]}
       >
-        <Text style={styles.login_label}>{isSubmitting ? "Signing in..." : "Sign In"}</Text>
+        <Text style={styles.login_label}>
+          {isSubmitting ? "Signing in..." : "Sign In"}
+        </Text>
       </Pressable>
     </View>
   );
