@@ -31,6 +31,27 @@ export interface AssignmentRecord {
   important: 0 | 1 | 2;
 }
 
+export interface AssignmentAttachment {
+  id: number;
+  assignment_id: number;
+  filename: string;
+  mime_type: string;
+  file_size: number;
+  uploaded_by: "ADMIN" | "USER";
+  date_created: string;
+}
+
+export interface AssignmentAttachmentUpload {
+  filename: string;
+  mime_type: string;
+  base64: string;
+  uploaded_by: "ADMIN" | "USER";
+}
+
+export interface AssignmentAttachmentDownload extends AssignmentAttachment {
+  base64: string;
+}
+
 function getApiUrl() {
   if (process.env.EXPO_PUBLIC_API_URL) {
     return process.env.EXPO_PUBLIC_API_URL.replace(/\/$/, "");
@@ -94,6 +115,34 @@ export function appendUserAssignmentMessage(userId: number, assignmentId: number
     body: JSON.stringify({ text }),
     method: "POST",
   });
+}
+
+export function updateUserAssignmentStatus(userId: number, assignmentId: number, status: 0 | 1 | 2 | 3): Promise<AssignmentRecord> {
+  return apiRequest<AssignmentRecord>(`/users/${userId}/assignments/${assignmentId}/status`, {
+    body: JSON.stringify({ status }),
+    method: "PATCH",
+  });
+}
+
+export function listAssignmentAttachments(assignmentId: number, userId?: number): Promise<AssignmentAttachment[]> {
+  const path = userId === undefined
+    ? `/assignments/${assignmentId}/attachments`
+    : `/users/${userId}/assignments/${assignmentId}/attachments`;
+  return apiRequest<AssignmentAttachment[]>(path);
+}
+
+export function uploadAssignmentAttachment(assignmentId: number, upload: AssignmentAttachmentUpload, userId?: number): Promise<AssignmentAttachment> {
+  const path = userId === undefined
+    ? `/assignments/${assignmentId}/attachments`
+    : `/users/${userId}/assignments/${assignmentId}/attachments`;
+  return apiRequest<AssignmentAttachment>(path, { body: JSON.stringify(upload), method: "POST" });
+}
+
+export function downloadAssignmentAttachment(assignmentId: number, attachmentId: number, userId?: number): Promise<AssignmentAttachmentDownload> {
+  const path = userId === undefined
+    ? `/assignments/${assignmentId}/attachments/${attachmentId}`
+    : `/users/${userId}/assignments/${assignmentId}/attachments/${attachmentId}`;
+  return apiRequest<AssignmentAttachmentDownload>(path);
 }
 
 export function acknowledgeUserNotification(userId: number, assignmentId: number): Promise<AssignmentRecord> {

@@ -24,6 +24,20 @@ export interface AssignmentRecord extends RowDataPacket {
   important: 0 | 1 | 2;
 }
 
+export interface AssignmentAttachment extends RowDataPacket {
+  id: number;
+  assignment_id: number;
+  filename: string;
+  mime_type: string;
+  file_size: number;
+  uploaded_by: "ADMIN" | "USER";
+  date_created: string;
+}
+
+export interface AssignmentAttachmentWithContent extends AssignmentAttachment {
+  file_data: Buffer;
+}
+
 export interface FacilityRecord extends RowDataPacket {
   id: number;
   name: string;
@@ -136,6 +150,21 @@ export async function createTables(): Promise<void> {
       name VARCHAR(255) NOT NULL,
       location VARCHAR(255) NOT NULL,
       PRIMARY KEY (id)
+    )
+  `);
+
+  await database.execute(`
+    CREATE TABLE IF NOT EXISTS assignment_attachments (
+      id INT NOT NULL AUTO_INCREMENT,
+      assignment_id INT NOT NULL,
+      filename VARCHAR(255) NOT NULL,
+      mime_type VARCHAR(150) NOT NULL,
+      file_size BIGINT NOT NULL,
+      uploaded_by VARCHAR(20) NOT NULL,
+      file_data LONGBLOB NOT NULL,
+      date_created DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      KEY idx_assignment_attachments_assignment (assignment_id)
     )
   `);
 }
@@ -324,6 +353,54 @@ export async function updateAssignmentStatus(id: number, status: number): Promis
   );
 
   return getAssignmentById(id);
+}
+
+export async function updateUserAssignmentStatus(id: number, userId: number, status: number): Promise<AssignmentRecord | null> {
+  const existingAssignment = await getAssignmentById(id);
+  if (!existingAssignment || existingAssignment.assigned_to_user_id !== userId) return null;
+  return updateAssignmentStatus(id, status);
+}
+
+export async function listAssignmentAttachments(assignmentId: number): Promise<AssignmentAttachment[]> {
+  const [rows] = await getPool().execute<RowDataPacket[]>(
+    `SELECT id, assignment_id, filename, mime_type, file_size, uploaded_by, date_created
+      FROM assignment_attachments WHERE assignment_id = ? ORDER BY date_created ASC, id ASC`,
+    [assignmentId],
+  );
+  return rows as AssignmentAttachment[];
+}
+
+export async function getAssignmentAttachment(
+  assignmentId: number,
+  attachmentId: number,
+): Promise<AssignmentAttachmentWithContent | null> {
+  const [rows] = await getPool().execute<RowDataPacket[]>(
+    `SELECT id, assignment_id, filename, mime_type, file_size, uploaded_by, date_created, file_data
+      FROM assignment_attachments WHERE assignment_id = ? AND id = ?`,
+    [assignmentId, attachmentId],
+  );
+  return (rows[0] as AssignmentAttachmentWithContent | undefined) ?? null;
+}
+
+export async function createAssignmentAttachment(
+  assignmentId: number,
+  filename: string,
+  mimeType: string,
+  uploadedBy: "ADMIN" | "USER",
+  fileData: Buffer,
+): Promise<AssignmentAttachment | null> {
+  const [result] = await getPool().execute<ResultSetHeader>(
+    `INSERT INTO assignment_attachments
+      (assignment_id, filename, mime_type, file_size, uploaded_by, file_data)
+      VALUES (?, ?, ?, ?, ?, ?)`,
+    [assignmentId, filename, mimeType, fileData.length, uploadedBy, fileData],
+  );
+  const [rows] = await getPool().execute<RowDataPacket[]>(
+    `SELECT id, assignment_id, filename, mime_type, file_size, uploaded_by, date_created
+      FROM assignment_attachments WHERE id = ?`,
+    [result.insertId],
+  );
+  return (rows[0] as AssignmentAttachment | undefined) ?? null;
 }
 
 export async function updateAssignmentFeedback(id: number, feedback: string): Promise<AssignmentRecord | null> {

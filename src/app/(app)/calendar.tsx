@@ -4,18 +4,21 @@ import { useEffect, useState } from "react";
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSession } from "../../ctx";
 import { SignOutPrompt } from "../../components/sign-out-prompt";
+import { AssignmentAttachments } from "../../components/assignment-attachments";
 import {
     acknowledgeUserNotification,
     appendUserAssignmentMessage,
     listUserAssignments,
     listUserNotifications,
     type AssignmentRecord,
+    updateUserAssignmentStatus,
 } from "../../lib/adminApi";
 
 type FeedbackMessage = { speaker: string; text: string };
 
 const weekdays = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
 const statusLabels = ["TO DO", "IN PROGRESS", "OVERDUE", "DONE"] as const;
+const statuses = [0, 1, 2, 3] as const;
 const statusColors = ["#E8E8E8", "#777777", "#D6453D", "#3D8B5C"];
 const statusTextColors = ["#333333", "#FFFFFF", "#FFFFFF", "#FFFFFF"];
 
@@ -93,6 +96,7 @@ export default function Calendar() {
   const [selectedAssignment, setSelectedAssignment] = useState<AssignmentRecord | null>(null);
   const [chatDraft, setChatDraft] = useState("");
   const [signOutPromptOpen, setSignOutPromptOpen] = useState(false);
+  const [statusUpdating, setStatusUpdating] = useState(false);
 
   useEffect(() => {
     if (!userId) return;
@@ -187,6 +191,19 @@ export default function Calendar() {
     }
   }
 
+  async function changeAssignmentStatus(status: 0 | 1 | 2 | 3) {
+    if (!userId || !selectedAssignment || statusUpdating) return;
+    setStatusUpdating(true);
+    setError("");
+    try {
+      replaceAssignment(await updateUserAssignmentStatus(userId, selectedAssignment.id, status));
+    } catch (statusError) {
+      setError(statusError instanceof Error ? statusError.message : "Assignment status could not be updated.");
+    } finally {
+      setStatusUpdating(false);
+    }
+  }
+
   function openAssignment(assignment: AssignmentRecord) {
     setSelectedAssignment(assignment);
     setChatDraft("");
@@ -262,6 +279,19 @@ export default function Calendar() {
             <View style={styles.modalHeader}><View style={styles.detailHeading}><Text style={styles.modalKicker}>ASSIGNMENT</Text><Text style={styles.modalTitle}>{selectedAssignment.name}</Text></View><Pressable accessibilityLabel="Close assignment" accessibilityRole="button" onPress={() => setSelectedAssignment(null)}><Ionicons name="close" size={22} color="#111111" /></Pressable></View>
             <ScrollView contentContainerStyle={styles.detailContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
               <View style={styles.detailMetaRow}><Text style={styles.detailMeta}>DUE {formatDate(selectedAssignment.end_date)}</Text><Text style={[styles.detailStatus, { backgroundColor: statusColors[selectedAssignment.status] ?? statusColors[0], color: statusTextColors[selectedAssignment.status] ?? statusTextColors[0] }]}>{statusLabel(selectedAssignment.status)}</Text></View>
+              <Text style={styles.statusPrompt}>UPDATE STATUS</Text>
+              <View style={styles.assignmentStatusOptions}>{statuses.map((status) => (
+                <Pressable
+                  accessibilityLabel={`Set assignment status to ${statusLabels[status]}`}
+                  accessibilityRole="button"
+                  disabled={statusUpdating}
+                  key={status}
+                  onPress={() => void changeAssignmentStatus(status)}
+                  style={[styles.assignmentStatusOption, { backgroundColor: statusColors[status] }, selectedAssignment.status === status && styles.selectedAssignmentStatus, statusUpdating && styles.disabledButton]}
+                >
+                  <Text style={[styles.assignmentStatusText, { color: statusTextColors[status] }]}>{statusLabels[status]}</Text>
+                </Pressable>
+              ))}</View>
               <Text style={styles.assignmentDescription}>{selectedAssignment.description}</Text>
               <View style={styles.chatHeader}><Text style={styles.sectionTitle}>CONVERSATION</Text><Ionicons name="chatbubbles-outline" size={17} color="#777777" /></View>
               {parseFeedback(selectedAssignment.feedback).map((entry, index) => {
@@ -270,6 +300,7 @@ export default function Calendar() {
                 return <View key={`${entry.speaker}-${index}`} style={[styles.chatBubble, isUser && styles.userBubble, isNotification && styles.notificationBubble]}><Text style={styles.chatSpeaker}>{isUser ? "YOU" : entry.speaker.toUpperCase()}</Text><Text style={styles.chatText}>{entry.text}</Text></View>;
               })}
               {!selectedAssignment.feedback && <Text style={styles.emptyCopy}>No messages yet. Start the conversation with your admin.</Text>}
+              <AssignmentAttachments assignmentId={selectedAssignment.id} uploadedBy="USER" userId={userId} />
               <TextInput accessibilityLabel="Message to admin" multiline onChangeText={setChatDraft} placeholder="Write a message to your admin..." placeholderTextColor="#999999" style={styles.chatInput} value={chatDraft} />
               {!!error && <Text accessibilityRole="alert" style={styles.chatError}>{error}</Text>}
               <Pressable accessibilityRole="button" disabled={messageSending || !chatDraft.trim()} onPress={() => void sendMessage()} style={[styles.sendButton, (messageSending || !chatDraft.trim()) && styles.disabledButton]}><Text style={styles.sendButtonText}>{messageSending ? "SENDING..." : "SEND MESSAGE"}</Text><Ionicons name="send" size={17} color="#FFFFFF" /></Pressable>
@@ -292,5 +323,5 @@ const styles = StyleSheet.create({
   calendar: { borderColor: "#DDDDDD", borderRadius: 5, borderWidth: 1, marginBottom: 30, padding: 13 }, weekdayRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: 13 }, weekday: { color: "#999999", fontSize: 9, fontWeight: "800", textAlign: "center", width: "14.28%" }, dateGrid: { flexDirection: "row", flexWrap: "wrap" }, dateCell: { alignItems: "center", height: 42, justifyContent: "flex-start", width: "14.28%" }, dateNumber: { alignItems: "center", borderRadius: 18, height: 29, justifyContent: "center", width: 29 }, todayDate: { borderColor: "#D6453D", borderWidth: 1 }, selectedDate: { backgroundColor: "#D6453D" }, dateText: { color: "#333333", fontSize: 12, fontWeight: "700" }, mutedDate: { color: "#BDBDBD" }, selectedDateText: { color: "#FFFFFF" }, assignmentDot: { backgroundColor: "transparent", borderRadius: 3, height: 4, marginTop: 3, width: 4 }, hasAssignmentDot: { backgroundColor: "#D6453D" }, selectedAssignmentDot: { backgroundColor: "#FFFFFF" },
   sectionHeader: { alignItems: "center", borderBottomColor: "#DDDDDD", borderBottomWidth: 1, flexDirection: "row", justifyContent: "space-between", paddingBottom: 12 }, upcomingHeader: { marginTop: 31 }, sectionTitle: { color: "#111111", fontSize: 11, fontWeight: "900", letterSpacing: 1.2 }, count: { color: "#999999", fontSize: 10, fontWeight: "800", letterSpacing: 1 }, assignmentList: { paddingTop: 4 }, assignmentRow: { alignItems: "center", borderBottomColor: "#EEEEEE", borderBottomWidth: 1, flexDirection: "row", minHeight: 79, paddingVertical: 12 }, assignmentAccent: { borderRadius: 2, height: 38, marginRight: 12, width: 3 }, assignmentDate: { alignItems: "center", marginRight: 14, width: 33 }, assignmentDay: { color: "#111111", fontSize: 18, fontWeight: "900" }, assignmentMonth: { color: "#999999", fontSize: 8, fontWeight: "900", marginTop: 1 }, assignmentInfo: { flex: 1, minWidth: 0 }, assignmentName: { color: "#111111", fontSize: 14, fontWeight: "800" }, assignmentDue: { color: "#888888", fontSize: 9, fontWeight: "700", marginTop: 4 }, assignmentStatus: { fontSize: 9, fontWeight: "900", letterSpacing: 0.7, marginTop: 4 }, assignmentDescription: { color: "#555555", fontSize: 14, lineHeight: 21, marginBottom: 24, marginTop: 16 },
   loading: { alignItems: "center", flexDirection: "row", gap: 10, paddingVertical: 22 }, loadingText: { color: "#777777", fontSize: 13 }, emptyCopy: { color: "#777777", fontSize: 13, lineHeight: 19, paddingVertical: 17 }, error: { color: "#B53A33", fontSize: 12, marginBottom: 12, marginTop: -16 }, chatError: { color: "#B53A33", fontSize: 12, marginTop: 8 }, emptyScreen: { alignItems: "center", backgroundColor: "#FFFFFF", flex: 1, justifyContent: "center", padding: 30 }, emptyTitle: { color: "#111111", fontSize: 22, fontWeight: "900", marginBottom: 8 },
-  modalBackdrop: { backgroundColor: "rgba(17,17,17,0.4)", flex: 1, justifyContent: "flex-end" }, notificationSheet: { backgroundColor: "#FFFFFF", borderTopLeftRadius: 10, borderTopRightRadius: 10, maxHeight: "78%", minHeight: 230, padding: 24, paddingBottom: 32 }, detailSheet: { backgroundColor: "#FFFFFF", borderTopLeftRadius: 10, borderTopRightRadius: 10, maxHeight: "90%", minHeight: "55%", padding: 24, paddingBottom: 30 }, modalHeader: { alignItems: "flex-start", flexDirection: "row", justifyContent: "space-between", marginBottom: 22 }, modalKicker: { color: "#777777", fontSize: 10, fontWeight: "800", letterSpacing: 1.5, marginBottom: 7 }, modalTitle: { color: "#111111", flexShrink: 1, fontSize: 22, fontWeight: "900" }, notificationRow: { alignItems: "center", borderBottomColor: "#EEEEEE", borderBottomWidth: 1, flexDirection: "row", gap: 12, paddingVertical: 13 }, notificationIcon: { alignItems: "center", backgroundColor: "#FFF0EE", borderRadius: 18, height: 36, justifyContent: "center", width: 36 }, notificationInfo: { flex: 1, minWidth: 0 }, notificationTitle: { color: "#111111", fontSize: 14, fontWeight: "800" }, notificationDescription: { color: "#777777", fontSize: 11, lineHeight: 15, marginTop: 3 }, notificationDue: { color: "#D6453D", fontSize: 9, fontWeight: "900", letterSpacing: 0.6, marginTop: 5 }, detailHeading: { flex: 1, paddingRight: 16 }, detailContent: { paddingBottom: 8 }, detailMetaRow: { alignItems: "center", flexDirection: "row", justifyContent: "space-between" }, detailMeta: { color: "#888888", fontSize: 10, fontWeight: "800", letterSpacing: 0.8 }, detailStatus: { borderRadius: 3, fontSize: 9, fontWeight: "900", overflow: "hidden", paddingHorizontal: 8, paddingVertical: 5 }, chatHeader: { alignItems: "center", borderBottomColor: "#DDDDDD", borderBottomWidth: 1, flexDirection: "row", justifyContent: "space-between", marginBottom: 12, paddingBottom: 10 }, chatBubble: { alignSelf: "flex-start", backgroundColor: "#F1F1F1", borderRadius: 6, marginBottom: 8, maxWidth: "88%", padding: 11 }, userBubble: { alignSelf: "flex-end", backgroundColor: "#F1D9D6" }, notificationBubble: { alignSelf: "center", backgroundColor: "#FFF0EE", borderColor: "#F0C2BE", borderWidth: 1, maxWidth: "100%" }, chatSpeaker: { color: "#777777", fontSize: 9, fontWeight: "900", letterSpacing: 1, marginBottom: 4 }, chatText: { color: "#222222", fontSize: 13, lineHeight: 18 }, chatInput: { borderColor: "#D6D6D6", borderRadius: 5, borderWidth: 1, color: "#111111", height: 75, marginTop: 12, padding: 12, textAlignVertical: "top" }, sendButton: { alignItems: "center", backgroundColor: "#D6453D", borderRadius: 5, flexDirection: "row", height: 49, justifyContent: "space-between", marginTop: 10, paddingHorizontal: 16 }, sendButtonText: { color: "#FFFFFF", fontSize: 10, fontWeight: "900", letterSpacing: 1.1 }, disabledButton: { opacity: 0.55 },
+  modalBackdrop: { backgroundColor: "rgba(17,17,17,0.4)", flex: 1, justifyContent: "flex-end" }, notificationSheet: { backgroundColor: "#FFFFFF", borderTopLeftRadius: 10, borderTopRightRadius: 10, maxHeight: "78%", minHeight: 230, padding: 24, paddingBottom: 32 }, detailSheet: { backgroundColor: "#FFFFFF", borderTopLeftRadius: 10, borderTopRightRadius: 10, maxHeight: "90%", minHeight: "55%", padding: 24, paddingBottom: 30 }, modalHeader: { alignItems: "flex-start", flexDirection: "row", justifyContent: "space-between", marginBottom: 22 }, modalKicker: { color: "#777777", fontSize: 10, fontWeight: "800", letterSpacing: 1.5, marginBottom: 7 }, modalTitle: { color: "#111111", flexShrink: 1, fontSize: 22, fontWeight: "900" }, notificationRow: { alignItems: "center", borderBottomColor: "#EEEEEE", borderBottomWidth: 1, flexDirection: "row", gap: 12, paddingVertical: 13 }, notificationIcon: { alignItems: "center", backgroundColor: "#FFF0EE", borderRadius: 18, height: 36, justifyContent: "center", width: 36 }, notificationInfo: { flex: 1, minWidth: 0 }, notificationTitle: { color: "#111111", fontSize: 14, fontWeight: "800" }, notificationDescription: { color: "#777777", fontSize: 11, lineHeight: 15, marginTop: 3 }, notificationDue: { color: "#D6453D", fontSize: 9, fontWeight: "900", letterSpacing: 0.6, marginTop: 5 }, detailHeading: { flex: 1, paddingRight: 16 }, detailContent: { paddingBottom: 8 }, detailMetaRow: { alignItems: "center", flexDirection: "row", justifyContent: "space-between", marginBottom: 14 }, detailMeta: { color: "#888888", fontSize: 10, fontWeight: "800", letterSpacing: 0.8 }, detailStatus: { borderRadius: 3, fontSize: 9, fontWeight: "900", overflow: "hidden", paddingHorizontal: 8, paddingVertical: 5 }, statusPrompt: { color: "#777777", fontSize: 10, fontWeight: "900", letterSpacing: 1, marginBottom: 7 }, assignmentStatusOptions: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 16 }, assignmentStatusOption: { alignItems: "center", borderColor: "transparent", borderRadius: 4, borderWidth: 2, justifyContent: "center", minHeight: 30, paddingHorizontal: 8 }, selectedAssignmentStatus: { borderColor: "#111111" }, assignmentStatusText: { fontSize: 9, fontWeight: "900" }, chatHeader: { alignItems: "center", borderBottomColor: "#DDDDDD", borderBottomWidth: 1, flexDirection: "row", justifyContent: "space-between", marginBottom: 12, paddingBottom: 10 }, chatBubble: { alignSelf: "flex-start", backgroundColor: "#F1F1F1", borderRadius: 6, marginBottom: 8, maxWidth: "88%", padding: 11 }, userBubble: { alignSelf: "flex-end", backgroundColor: "#F1D9D6" }, notificationBubble: { alignSelf: "center", backgroundColor: "#FFF0EE", borderColor: "#F0C2BE", borderWidth: 1, maxWidth: "100%" }, chatSpeaker: { color: "#777777", fontSize: 9, fontWeight: "900", letterSpacing: 1, marginBottom: 4 }, chatText: { color: "#222222", fontSize: 13, lineHeight: 18 }, chatInput: { borderColor: "#D6D6D6", borderRadius: 5, borderWidth: 1, color: "#111111", height: 75, marginTop: 12, padding: 12, textAlignVertical: "top" }, sendButton: { alignItems: "center", backgroundColor: "#D6453D", borderRadius: 5, flexDirection: "row", height: 49, justifyContent: "space-between", marginTop: 10, paddingHorizontal: 16 }, sendButtonText: { color: "#FFFFFF", fontSize: 10, fontWeight: "900", letterSpacing: 1.1 }, disabledButton: { opacity: 0.55 },
 });

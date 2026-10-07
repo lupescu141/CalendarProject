@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSession } from "../../ctx";
 import { SignOutPrompt } from "../../components/sign-out-prompt";
+import { AssignmentAttachments } from "../../components/assignment-attachments";
 import { acknowledgeAssignmentNotification, createAssignment, listAssignments, listUsers, notifyAssignment, updateAssignmentDetails, updateAssignmentFeedback, updateAssignmentStatus, type AssignmentRecord, type UserRecord } from "../../lib/adminApi";
 
 const today = new Date();
@@ -294,6 +295,7 @@ export default function Admin() {
               <Text style={styles.feedbackSectionTitle}>FEEDBACK</Text>
               {parseFeedback(selectedAssignment.feedback).map((entry, index) => { const isNotification = entry.speaker.toUpperCase() === "NOTIFICATION"; return <View key={`${entry.speaker}-${index}`} style={[styles.feedbackMessage, entry.speaker.toUpperCase() === "ADMIN" && styles.adminMessage, isNotification && styles.notificationMessage]}><Text style={styles.feedbackSpeaker}>{entry.speaker.toUpperCase()}</Text><Text style={styles.feedbackMessageText}>{entry.text === notificationWaiting ? notificationWaiting : entry.text === notificationReceived ? notificationReceived : entry.text}</Text></View>; })}
               {!selectedAssignment.feedback && <Text style={styles.feedbackEmpty}>No feedback yet. Start the conversation below.</Text>}
+              <AssignmentAttachments assignmentId={selectedAssignment.id} uploadedBy="ADMIN" />
               <TextInput multiline onChangeText={setFeedbackDraft} placeholder="Write feedback as admin..." placeholderTextColor="#999999" style={[styles.input, styles.feedbackInput]} value={feedbackDraft} />
               <Pressable accessibilityRole="button" disabled={feedbackSaving || !feedbackDraft.trim()} onPress={saveFeedback} style={[styles.saveButton, (feedbackSaving || !feedbackDraft.trim()) && styles.disabledButton]}><Text style={styles.saveText}>{feedbackSaving ? "SAVING..." : "ADD FEEDBACK"}</Text><Ionicons name="send" size={17} color="#FFFFFF" /></Pressable>
             </ScrollView>
