@@ -3,6 +3,7 @@ import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSession } from "../../ctx";
+import { SignOutPrompt } from "../../components/sign-out-prompt";
 import { acknowledgeAssignmentNotification, createAssignment, listAssignments, listUsers, notifyAssignment, updateAssignmentDetails, updateAssignmentFeedback, updateAssignmentStatus, type AssignmentRecord, type UserRecord } from "../../lib/adminApi";
 
 const today = new Date();
@@ -38,7 +39,7 @@ function formatCreatedDate(value: string) {
 
 export default function Admin() {
   const router = useRouter();
-  const { signOut } = useSession();
+  const { currentUser, signOut } = useSession();
   const [users, setUsers] = useState<UserRecord[]>([]);
   const [selectedUser, setSelectedUser] = useState<UserRecord | null>(null);
   const [assignmentName, setAssignmentName] = useState("");
@@ -59,6 +60,7 @@ export default function Admin() {
   const [assignmentDueDateDraft, setAssignmentDueDateDraft] = useState("");
   const [assignmentSaving, setAssignmentSaving] = useState(false);
   const [notificationSaving, setNotificationSaving] = useState(false);
+  const [signOutPromptOpen, setSignOutPromptOpen] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -68,6 +70,42 @@ export default function Admin() {
       .finally(() => { if (mounted) setLoading(false); });
     return () => { mounted = false; };
   }, []);
+
+  useEffect(() => {
+    if (currentUser?.admin) return;
+    router.replace("/(app)/calendar");
+  }, [currentUser, router]);
+
+  useEffect(() => {
+    if (!expandedUser) return;
+
+    let active = true;
+    let refreshing = false;
+    const refreshAssignments = async () => {
+      if (refreshing) return;
+      refreshing = true;
+      try {
+        const records = await listAssignments(expandedUser.facility);
+        if (!active) return;
+        setAssignments(records);
+        setSelectedAssignment((current) => current
+          ? records.find((assignment) => assignment.id === current.id) ?? null
+          : null);
+      } catch (error) {
+        if (active) setMessage(`Could not load assignments: ${error instanceof Error ? error.message : "check the admin API"}`);
+      } finally {
+        refreshing = false;
+        if (active) setAssignmentsLoading(false);
+      }
+    };
+
+    void refreshAssignments();
+    const interval = setInterval(() => void refreshAssignments(), 5000);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, [expandedUser, router]);
 
   function openAssignment(user: UserRecord) {
     setSelectedUser(user);
@@ -86,13 +124,6 @@ export default function Admin() {
     setExpandedUser(user);
     setAssignments([]);
     setAssignmentsLoading(true);
-    try {
-      setAssignments(await listAssignments(user.facility));
-    } catch {
-      setMessage("Could not load assignments for this facility.");
-    } finally {
-      setAssignmentsLoading(false);
-    }
   }
 
   async function changeStatus(assignment: AssignmentRecord, status: 0 | 1 | 2 | 3) {
@@ -200,9 +231,10 @@ export default function Admin() {
   }
 
   return (
+    currentUser?.admin ?
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       <View style={styles.header}>
-        <Pressable accessibilityLabel="Sign out and return to sign in" accessibilityRole="button" hitSlop={8} onPress={() => { signOut(); router.replace("/sign-in"); }}>
+        <Pressable accessibilityLabel="Sign out" accessibilityRole="button" hitSlop={8} onPress={() => setSignOutPromptOpen(true)}>
           <Ionicons name="arrow-back" size={22} color="#111111" />
         </Pressable>
         <Text style={styles.brandName}><Text style={styles.brandFirst}>first</Text><Text style={styles.brandStop}>stop</Text></Text>
@@ -268,7 +300,14 @@ export default function Admin() {
           </>}
         </View></View>
       </Modal>
+
+      <SignOutPrompt
+        visible={signOutPromptOpen}
+        onCancel={() => setSignOutPromptOpen(false)}
+        onConfirm={() => { signOut(); router.replace("/sign-in"); }}
+      />
     </ScrollView>
+    : null
   );
 }
 

@@ -1,5 +1,6 @@
 import { Image } from "expo-image";
 import { router } from "expo-router";
+import type { Href } from "expo-router";
 import { useState } from "react";
 import {
   Pressable,
@@ -88,8 +89,12 @@ export default function SignIn() {
           setError("");
           setIsSubmitting(true);
           try {
-            await signIn({ email, password });
-            router.replace("/(app)/calendar");
+            const user = await signIn({ email, password });
+            if (user.admin) {
+              router.replace("/(app)/choose-destination" as Href);
+            } else {
+              router.replace("/(app)/calendar");
+            }
           } catch (signInError) {
             setError(signInError instanceof Error ? signInError.message : "Sign in failed.");
           } finally {

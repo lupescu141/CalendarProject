@@ -3,6 +3,7 @@ import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSession } from "../../ctx";
+import { SignOutPrompt } from "../../components/sign-out-prompt";
 import {
     acknowledgeUserNotification,
     appendUserAssignmentMessage,
@@ -76,7 +77,7 @@ function AssignmentRow({ assignment, onPress }: { assignment: AssignmentRecord; 
 
 export default function Calendar() {
   const router = useRouter();
-  const { currentUser } = useSession();
+  const { currentUser, signOut } = useSession();
   const userId = currentUser?.id;
   const today = new Date();
   const todayKey = dateKey(today);
@@ -91,12 +92,16 @@ export default function Calendar() {
   const [notificationMenuOpen, setNotificationMenuOpen] = useState(false);
   const [selectedAssignment, setSelectedAssignment] = useState<AssignmentRecord | null>(null);
   const [chatDraft, setChatDraft] = useState("");
+  const [signOutPromptOpen, setSignOutPromptOpen] = useState(false);
 
   useEffect(() => {
     if (!userId) return;
 
     let active = true;
+    let refreshing = false;
     const refresh = async () => {
+      if (refreshing) return;
+      refreshing = true;
       try {
         const [userAssignments, userNotifications] = await Promise.all([
           listUserAssignments(userId),
@@ -106,19 +111,20 @@ export default function Calendar() {
           setAssignments(userAssignments);
           setNotifications(userNotifications);
           setSelectedAssignment((current) => current
-            ? userAssignments.find((assignment) => assignment.id === current.id) ?? current
+            ? userAssignments.find((assignment) => assignment.id === current.id) ?? null
             : null);
           setError("");
         }
       } catch (loadError) {
         if (active) setError(loadError instanceof Error ? loadError.message : "Assignments could not be loaded.");
       } finally {
+        refreshing = false;
         if (active) setLoading(false);
       }
     };
 
     void refresh();
-    const interval = setInterval(() => void refresh(), 30000);
+    const interval = setInterval(() => void refresh(), 5000);
     return () => {
       active = false;
       clearInterval(interval);
@@ -193,7 +199,7 @@ export default function Calendar() {
   return (
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       <View style={styles.header}>
-        <Pressable accessibilityLabel="Go back" accessibilityRole="button" hitSlop={8} onPress={() => router.back()}><Ionicons name="arrow-back" size={22} color="#111111" /></Pressable>
+        <Pressable accessibilityLabel="Sign out" accessibilityRole="button" hitSlop={8} onPress={() => setSignOutPromptOpen(true)}><Ionicons name="arrow-back" size={22} color="#111111" /></Pressable>
         <Text style={styles.brandName}><Text style={styles.brandFirst}>first</Text><Text style={styles.brandStop}>stop</Text></Text>
         <Pressable accessibilityLabel={`Notifications, ${notifications.length} unread`} accessibilityRole="button" hitSlop={8} onPress={() => void openNotifications()} style={styles.bellButton}>
           <Ionicons name="notifications-outline" size={21} color="#111111" />
@@ -243,6 +249,12 @@ export default function Calendar() {
           {notificationLoading ? <ActivityIndicator color="#D6453D" /> : notifications.length === 0 ? <Text style={styles.emptyCopy}>No unread assignment notifications.</Text> : <ScrollView showsVerticalScrollIndicator={false}>{notifications.map((assignment) => <Pressable accessibilityLabel={`Open notification for ${assignment.name}`} accessibilityRole="button" key={assignment.id} onPress={() => void openAssignmentFromNotification(assignment)} style={styles.notificationRow}><View style={styles.notificationIcon}><Ionicons name="notifications" size={17} color="#D6453D" /></View><View style={styles.notificationInfo}><Text style={styles.notificationTitle}>{assignment.name}</Text><Text style={styles.notificationDescription} numberOfLines={2}>{assignment.description}</Text><Text style={styles.notificationDue}>DUE {formatDate(assignment.end_date)}</Text></View><Ionicons name="chevron-forward" size={18} color="#888888" /></Pressable>)}</ScrollView>}
         </View></View>
       </Modal>
+
+      <SignOutPrompt
+        visible={signOutPromptOpen}
+        onCancel={() => setSignOutPromptOpen(false)}
+        onConfirm={() => { signOut(); router.replace("/sign-in"); }}
+      />
 
       <Modal animationType="slide" onRequestClose={() => setSelectedAssignment(null)} transparent visible={selectedAssignment !== null}>
         <View style={styles.modalBackdrop}><View style={styles.detailSheet}>
