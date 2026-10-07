@@ -3,6 +3,7 @@ import { router } from "expo-router";
 import { useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSession } from "../ctx";
+import { BurgerMenu } from "../components/burgerMenu";
 
 export default function SignIn() {
   const { signIn } = useSession();
@@ -39,6 +40,7 @@ export default function SignIn() {
   };
   return (
     <View style={styles.body}>
+      <BurgerMenu />
       <View style={styles.logo_container}>
         <Image
           source={require("../assets/images/logo.svg")}
