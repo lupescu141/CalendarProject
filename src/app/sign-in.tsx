@@ -43,6 +43,7 @@ export default function SignIn() {
       <BurgerMenu />
       <View style={styles.logo_container}>
         <Image
+          contentFit="contain"
           source={require("../assets/images/logo.svg")}
           style={styles.logo}
         />
@@ -121,7 +122,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  logo: { width: "100%", height: "100%", resizeMode: "contain" },
+  logo: { width: "100%", height: "100%" },
   logo_undertext: {
     fontSize: 30,
     fontWeight: "bold",
