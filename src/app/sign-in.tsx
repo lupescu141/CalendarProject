@@ -40,7 +40,7 @@ export default function SignIn() {
   };
   return (
     <View style={styles.body}>
-      <BurgerMenu />
+      {/* <BurgerMenu /> */}
       <View style={styles.logo_container}>
         <Image
           source={require("../assets/images/logo.svg")}
