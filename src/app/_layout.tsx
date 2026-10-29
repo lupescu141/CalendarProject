@@ -4,8 +4,8 @@ import { SessionProvider, useSession } from "../ctx";
 import { SplashScreenController } from "../splash";
 import * as SplashScreen from "expo-splash-screen";
 import { useEffect } from "react";
-
 SplashScreen.preventAutoHideAsync();
+import { StatusBar } from "expo-status-bar";
 
 export default function Root() {
   const [loaded, error] = useFonts({
@@ -25,6 +25,7 @@ export default function Root() {
   return (
     <SessionProvider>
       <SplashScreenController />
+      <StatusBar style="dark" />
       <RootNavigator />
     </SessionProvider>
   );
@@ -38,7 +39,13 @@ function RootNavigator() {
   return (
     <Stack>
       <Stack.Protected guard={!!session}>
-        <Stack.Screen name="(app)" />
+        <Stack.Screen
+          name="(app)"
+          options={{
+            // Hide the header for this route
+            headerShown: false,
+          }}
+        />
       </Stack.Protected>
 
       <Stack.Protected guard={!session}>
