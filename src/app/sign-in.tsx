@@ -104,7 +104,7 @@ export default function SignIn() {
         onHoverOut={handleButtonLeave}
         style={[
           styles.login_button,
-          buttonisHovered && { backgroundColor: "#B53A33" },
+          buttonisHovered && { backgroundColor: "#d1141b" },
         ]}
       >
         <Text style={styles.login_label}>
@@ -120,13 +120,15 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     alignItems: "center",
     justifyContent: "center",
+    fontFamily: "Sora",
   },
   logo: { width: "100%", height: "100%", resizeMode: "contain" },
   logo_undertext: {
     fontSize: 30,
     fontWeight: "bold",
-    marginTop: -12,
-    color: "#D6453D",
+    marginTop: -5,
+    color: "#ed1c24",
+    fontFamily: "Sora",
   },
   logo_container: {
     width: "100%",
@@ -140,6 +142,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "bold",
     marginBottom: 8,
+    fontFamily: "Sora",
     color: "#333333",
     alignSelf: "flex-start",
     marginLeft: "10%",
@@ -155,9 +158,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     borderRadius: 8,
     backgroundColor: "#F5F5F5",
+    fontFamily: "Sora",
   },
   isFocused: {
-    borderColor: "#D6453D",
+    borderColor: "#ed1c24",
   },
   input_container: {
     width: "100%",
@@ -166,7 +170,7 @@ const styles = StyleSheet.create({
   },
 
   login_button: {
-    backgroundColor: "#D6453D",
+    backgroundColor: "#ed1c24",
     paddingVertical: 10,
     paddingHorizontal: 20,
     borderRadius: 5,
@@ -178,9 +182,10 @@ const styles = StyleSheet.create({
     fontFamily: "Sora",
   },
   error: {
-    color: "#B53A33",
+    color: "#ed1c24",
     marginBottom: 12,
     maxWidth: "80%",
     textAlign: "center",
+    fontFamily: "Sora",
   },
 });
