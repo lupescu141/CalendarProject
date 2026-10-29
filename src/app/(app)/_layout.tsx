@@ -2,8 +2,26 @@ import "react-native-gesture-handler";
 import { Drawer } from "expo-router/drawer";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { Ionicons } from "@expo/vector-icons";
+import { useFonts } from "expo-font";
+import { useEffect } from "react";
+import * as SplashScreen from "expo-splash-screen";
+SplashScreen.preventAutoHideAsync();
 
 export default function AppLayout() {
+  const [loaded, error] = useFonts({
+    Sora: require("@/assets/fonts/Sora/Sora-VariableFont_wght.ttf"),
+  });
+
+  useEffect(() => {
+    if (loaded || error) {
+      SplashScreen.hideAsync();
+    }
+  }, [loaded, error]);
+
+  if (!loaded && !error) {
+    return null;
+  }
+
   // This renders the navigation stack for all authenticated app routes.
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -14,6 +32,9 @@ export default function AppLayout() {
           drawerActiveTintColor: "#ed1c24",
           drawerInactiveTintColor: "#333333",
           drawerLabelStyle: {
+            fontFamily: "Sora",
+          },
+          headerTitleStyle: {
             fontFamily: "Sora",
           },
         }}
