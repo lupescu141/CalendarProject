@@ -6,6 +6,7 @@ import * as SplashScreen from "expo-splash-screen";
 import { useEffect } from "react";
 SplashScreen.preventAutoHideAsync();
 import { StatusBar } from "expo-status-bar";
+import { KeyboardProvider } from "react-native-keyboard-controller";
 
 export default function Root() {
   const [loaded, error] = useFonts({
@@ -24,9 +25,11 @@ export default function Root() {
   // Set up the auth context and render your layout inside of it.
   return (
     <SessionProvider>
-      <SplashScreenController />
-      <StatusBar style="dark" />
-      <RootNavigator />
+      <KeyboardProvider>
+        <SplashScreenController />
+        <StatusBar style="dark" />
+        <RootNavigator />
+      </KeyboardProvider>
     </SessionProvider>
   );
 }

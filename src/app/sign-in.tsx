@@ -4,6 +4,10 @@ import { useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSession } from "../ctx";
 import { BurgerMenu } from "../components/burgerMenu";
+import {
+  KeyboardAwareScrollView,
+  KeyboardToolbar,
+} from "react-native-keyboard-controller";
 
 export default function SignIn() {
   const { signIn } = useSession();
@@ -39,7 +43,10 @@ export default function SignIn() {
     setIsPasswordFocused(false);
   };
   return (
-    <View style={styles.body}>
+    <KeyboardAwareScrollView
+      bottomOffset={62}
+      contentContainerStyle={styles.container}
+    >
       {/* <BurgerMenu /> */}
       <View style={styles.logo_container}>
         <Image
@@ -111,11 +118,11 @@ export default function SignIn() {
           {isSubmitting ? "Signing in..." : "Sign In"}
         </Text>
       </Pressable>
-    </View>
+    </KeyboardAwareScrollView>
   );
 }
 const styles = StyleSheet.create({
-  body: {
+  container: {
     flex: 1,
     backgroundColor: "#FFFFFF",
     alignItems: "center",
