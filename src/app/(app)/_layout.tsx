@@ -7,7 +7,17 @@ export default function AppLayout() {
   // This renders the navigation stack for all authenticated app routes.
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <Drawer screenOptions={{ headerShown: true, drawerType: "back" }}>
+      <Drawer
+        screenOptions={{
+          headerShown: true,
+          drawerType: "back",
+          drawerActiveTintColor: "#D6453D",
+          drawerInactiveTintColor: "#555",
+          drawerLabelStyle: {
+            fontFamily: "Sora",
+          },
+        }}
+      >
         <Drawer.Screen
           name="admin"
           options={{

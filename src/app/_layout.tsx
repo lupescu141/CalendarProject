@@ -1,5 +1,4 @@
 import { Stack } from "expo-router";
-
 import { SessionProvider, useSession } from "../ctx";
 import { SplashScreenController } from "../splash";
 import { StatusBar } from "expo-status-bar";
