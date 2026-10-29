@@ -23,6 +23,7 @@ export default function AppLayout() {
           options={{
             drawerLabel: "Admin",
             headerTitle: "Admin",
+            headerTitleAlign: "center",
             drawerIcon: ({ size, color }) => (
               <Ionicons name="home-outline" size={size} color={color} />
             ),
@@ -33,6 +34,7 @@ export default function AppLayout() {
           options={{
             drawerLabel: "Calendar",
             headerTitle: "Calendar",
+            headerTitleAlign: "center",
             drawerIcon: ({ size, color }) => (
               <Ionicons
                 name="calendar-number-outline"
@@ -47,6 +49,7 @@ export default function AppLayout() {
           options={{
             drawerLabel: "Sign out",
             headerTitle: "Sign out",
+            headerTitleAlign: "center",
             drawerIcon: ({ size, color }) => (
               <Ionicons name="log-out-outline" size={size} color={color} />
             ),
