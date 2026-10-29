@@ -11,8 +11,8 @@ export default function AppLayout() {
         screenOptions={{
           headerShown: true,
           drawerType: "back",
-          drawerActiveTintColor: "#D6453D",
-          drawerInactiveTintColor: "#555",
+          drawerActiveTintColor: "#ed1c24",
+          drawerInactiveTintColor: "#333333",
           drawerLabelStyle: {
             fontFamily: "Sora",
           },
