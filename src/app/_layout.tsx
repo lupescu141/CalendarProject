@@ -1,12 +1,12 @@
-import { Stack } from "expo-router";
 import { useFonts } from "expo-font";
+import { Stack } from "expo-router";
+import * as SplashScreen from "expo-splash-screen";
+import { StatusBar } from "expo-status-bar";
+import { useEffect } from "react";
+import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SessionProvider, useSession } from "../ctx";
 import { SplashScreenController } from "../splash";
-import * as SplashScreen from "expo-splash-screen";
-import { useEffect } from "react";
 SplashScreen.preventAutoHideAsync();
-import { StatusBar } from "expo-status-bar";
-import { KeyboardProvider } from "react-native-keyboard-controller";
 
 export default function Root() {
   const [loaded, error] = useFonts({

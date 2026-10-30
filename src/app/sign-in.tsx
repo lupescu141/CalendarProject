@@ -2,12 +2,10 @@ import { Image } from "expo-image";
 import { router } from "expo-router";
 import { useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
-import { useSession } from "../ctx";
-import { BurgerMenu } from "../components/burgerMenu";
 import {
-  KeyboardAwareScrollView,
-  KeyboardToolbar,
+  KeyboardAwareScrollView
 } from "react-native-keyboard-controller";
+import { useSession } from "../ctx";
 
 export default function SignIn() {
   const { signIn } = useSession();
