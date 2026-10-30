@@ -1,10 +1,10 @@
-import "react-native-gesture-handler";
-import { Drawer } from "expo-router/drawer";
-import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { Ionicons } from "@expo/vector-icons";
 import { useFonts } from "expo-font";
-import { useEffect } from "react";
+import { Drawer } from "expo-router/drawer";
 import * as SplashScreen from "expo-splash-screen";
+import { useEffect } from "react";
+import "react-native-gesture-handler";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 SplashScreen.preventAutoHideAsync();
 
 export default function AppLayout() {
