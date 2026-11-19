@@ -1,11 +1,30 @@
 import { createServer } from "node:http";
+import { readFile } from "node:fs/promises";
+import { extname, isAbsolute, relative, resolve, sep } from "node:path";
 
-import { acknowledgeAssignmentNotification, acknowledgeUserAssignmentNotification, appendUserAssignmentMessage, createAssignment, createAssignmentAttachment, createTables, getAssignmentAttachment, getAssignmentById, listAssignmentAttachments, listAssignments, listUserAssignments, listUserNotifications, listUsers, notifyAssignment, updateAssignmentDetails, updateAssignmentFeedback, updateAssignmentStatus, updateUserAssignmentStatus } from "../src/lib/mysql";
+import { acknowledgeAssignmentNotification, acknowledgeUserAssignmentNotification, appendUserAssignmentMessage, closeDatabase, createAssignment, createAssignmentAttachment, createTables, getAssignmentAttachment, getAssignmentById, listAssignmentAttachments, listAssignments, listUserAssignments, listUserNotifications, listUsers, notifyAssignment, updateAssignmentDetails, updateAssignmentFeedback, updateAssignmentStatus, updateUserAssignmentStatus } from "../src/lib/mysql";
 import { authenticateUser, createUser } from "../src/lib/passwordAuth";
 
-const port = Number(process.env.API_PORT || 3000);
 const maxAttachmentSize = 10 * 1024 * 1024;
 const maxRequestSize = Math.ceil(maxAttachmentSize / 3) * 4 + 64 * 1024;
+const staticContentTypes: Record<string, string> = {
+  ".css": "text/css",
+  ".html": "text/html",
+  ".ico": "image/x-icon",
+  ".jpeg": "image/jpeg",
+  ".jpg": "image/jpeg",
+  ".js": "text/javascript",
+  ".json": "application/json",
+  ".map": "application/json",
+  ".otf": "font/otf",
+  ".png": "image/png",
+  ".svg": "image/svg+xml",
+  ".ttf": "font/ttf",
+  ".wasm": "application/wasm",
+  ".webp": "image/webp",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2",
+};
 
 function sendJson(response: import("node:http").ServerResponse, status: number, body: unknown) {
   response.writeHead(status, {
@@ -59,7 +78,53 @@ function attachmentPayload(value: unknown) {
   };
 }
 
-const server = createServer(async (request, response) => {
+async function serveStaticFile(request: import("node:http").IncomingMessage, response: import("node:http").ServerResponse, staticDir: string) {
+  if (request.method !== "GET") return false;
+
+  const pathname = decodeURIComponent(new URL(request.url || "/", "http://localhost").pathname);
+  const requestedPath = pathname === "/" ? "sign-in" : pathname.replace(/^[/\\]+/, "");
+  const staticRoot = resolve(staticDir);
+  const candidates = extname(requestedPath)
+    ? [requestedPath]
+    : [requestedPath, `${requestedPath}.html`, `${requestedPath}/index.html`];
+  if (request.headers.accept?.includes("text/html")) candidates.push("sign-in.html");
+
+  for (const candidate of candidates) {
+    const filePath = resolve(staticRoot, candidate);
+    const relativePath = relative(staticRoot, filePath);
+    if (relativePath === ".." || relativePath.startsWith(`..${sep}`) || isAbsolute(relativePath)) return false;
+
+    let content: Buffer;
+    try {
+      content = await readFile(filePath);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "ENOENT" || code === "ENOTDIR") continue;
+      throw error;
+    }
+
+    response.writeHead(200, {
+      "Content-Length": content.length,
+      "Content-Type": staticContentTypes[extname(filePath).toLowerCase()] || "application/octet-stream",
+      "X-Content-Type-Options": "nosniff",
+    });
+    response.end(content);
+    return true;
+  }
+
+  return false;
+}
+
+interface ApiServerOptions {
+  host?: string;
+  port?: number;
+  staticDir?: string;
+}
+
+export async function startApiServer(options: ApiServerOptions = {}) {
+  const port = options.port ?? Number(process.env.API_PORT || 3000);
+  const host = options.host ?? process.env.API_HOST ?? "0.0.0.0";
+  const server = createServer(async (request, response) => {
   if (request.method === "OPTIONS") {
     sendJson(response, 204, null);
     return;
@@ -303,6 +368,7 @@ const server = createServer(async (request, response) => {
       return;
     }
 
+    if (options.staticDir && await serveStaticFile(request, response, options.staticDir)) return;
     sendJson(response, 404, { error: "Not found" });
   } catch (error) {
     console.error(error);
@@ -312,11 +378,49 @@ const server = createServer(async (request, response) => {
         : "The database request failed",
     });
   }
-});
-
-createTables()
-  .then(() => server.listen(port, "0.0.0.0", () => console.log(`API listening on http://0.0.0.0:${port}`)))
-  .catch((error) => {
-    console.error("Could not initialize the database:", error);
-    process.exitCode = 1;
   });
+
+  try {
+    await createTables();
+    await new Promise<void>((resolveListen, rejectListen) => {
+      const onError = (error: Error) => {
+        server.off("listening", onListening);
+        rejectListen(error);
+      };
+      const onListening = () => {
+        server.off("error", onError);
+        resolveListen();
+      };
+
+      server.once("error", onError);
+      server.once("listening", onListening);
+      server.listen(port, host);
+    });
+  } catch (error) {
+    server.close();
+    throw error;
+  }
+
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    server.close();
+    throw new Error("The API server did not receive a TCP address");
+  }
+
+  return {
+    port: address.port,
+    close: () => new Promise<void>((resolveClose, rejectClose) => {
+      server.close((error) => error ? rejectClose(error) : resolveClose());
+    }),
+  };
+}
+
+if (require.main === module) {
+  startApiServer()
+    .then(({ port }) => console.log(`API listening on http://${process.env.API_HOST || "0.0.0.0"}:${port}`))
+    .catch(async (error) => {
+      console.error("Could not initialize the API:", error);
+      await closeDatabase();
+      process.exitCode = 1;
+  });
+}
