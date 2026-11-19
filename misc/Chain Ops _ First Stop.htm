@@ -1,0 +1,1616 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script>
+(function () {
+  'use strict';
+
+  function evaluate(expression, scope) {
+    expression = expression.replace(/^{{\s*|\s*}}$/g, '').trim();
+    const names = Object.keys(scope);
+    try {
+      return Function(...names, 'return (' + expression + ')')(...names.map((name) => scope[name]));
+    } catch (error) {
+      console.warn('[dc] Could not evaluate:', expression, error);
+      return '';
+    }
+  }
+
+  function interpolate(value, scope) {
+    return value.replace(/{{\s*([\s\S]*?)\s*}}/g, function (_, expression) {
+      const result = evaluate(expression, scope);
+      return result == null ? '' : String(result);
+    });
+  }
+
+  function interpolateText(value, scope) {
+    return value.replace(/{{\s*([\s\S]*?)\s*}}/g, function (_, expression) {
+      const result = evaluate(expression, scope);
+      const text = result == null ? '' : String(result);
+      const escaped = text.replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
+      return escaped.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer" style="color:#ED1C24;text-decoration:underline;">$1</a>');
+    });
+  }
+
+  class DCLogic {
+    constructor(props) {
+      this.props = props || {};
+      this.state = {};
+      this._render = function () {};
+    }
+
+    setState(next) {
+      this.state = Object.assign({}, this.state, next);
+      this._render();
+    }
+  }
+
+  function renderNode(node, scope, events) {
+    if (node.nodeType === Node.TEXT_NODE) return interpolateText(node.nodeValue, scope);
+    if (node.nodeType !== Node.ELEMENT_NODE) return '';
+
+    if (node.tagName.toLowerCase() === 'sc-if') {
+      const visible = evaluate(node.getAttribute('value') || 'false', scope);
+      return visible ? Array.from(node.childNodes).map((child) => renderNode(child, scope, events)).join('') : '';
+    }
+
+    if (node.tagName.toLowerCase() === 'sc-for') {
+      const list = evaluate(node.getAttribute('list') || '[]', scope) || [];
+      const itemName = node.getAttribute('as') || 'item';
+      return list.map((item) => {
+        const childScope = Object.assign({}, scope, { [itemName]: item });
+        return Array.from(node.childNodes).map((child) => renderNode(child, childScope, events)).join('');
+      }).join('');
+    }
+
+    const clone = node.cloneNode(false);
+    Array.from(node.attributes).forEach((attribute) => {
+      const name = attribute.name;
+      const value = attribute.value;
+      const lowerName = name.toLowerCase();
+      if (lowerName === 'onclick' || lowerName === 'onchange' || lowerName === 'oninput') {
+        const expression = value.replace(/^{{\s*|\s*}}$/g, '');
+        const id = String(events.length);
+        events.push({ id: id, type: lowerName.slice(2), handler: evaluate(expression, scope) });
+        clone.removeAttribute(name);
+        clone.setAttribute('data-dc-event-' + id, 'true');
+        return;
+      }
+      if (lowerName === 'style-hover' || lowerName === 'hint-placeholder-count' || lowerName === 'hint-placeholder-val') return;
+      if (lowerName === 'data-dc-value') {
+        clone.setAttribute('value', interpolate(value, scope));
+        return;
+      }
+      clone.setAttribute(name, interpolate(value, scope));
+    });
+    clone.innerHTML = Array.from(node.childNodes).map((child) => renderNode(child, scope, events)).join('');
+    if (node.tagName.toLowerCase() === 'select') {
+      const selectedValue = interpolate(node.getAttribute('value') || '', scope);
+      Array.from(clone.options).forEach((option) => {
+        if (option.value === selectedValue) option.setAttribute('selected', '');
+        else option.removeAttribute('selected');
+      });
+    }
+    return clone.outerHTML;
+  }
+
+  function mount() {
+    const host = document.querySelector('x-dc');
+    const dcScript = document.querySelector('script[data-dc-script]');
+    if (!host || !dcScript) return;
+
+    const helmet = host.querySelector('helmet');
+    if (helmet) document.head.insertAdjacentHTML('beforeend', helmet.innerHTML);
+    const sourceRoot = Array.from(host.children).find((child) => child.tagName.toLowerCase() === 'div');
+    if (!sourceRoot) return;
+    const template = sourceRoot.outerHTML;
+    const props = JSON.parse(dcScript.getAttribute('data-props') || '{}');
+    const config = {};
+    Object.keys(props).forEach((key) => { config[key] = props[key].default; });
+    const source = dcScript.textContent;
+    const Component = Function('DCLogic', source + '\nreturn Component;')(DCLogic);
+    const component = new Component(config);
+    const root = document.createElement('div');
+    host.replaceChildren(root);
+    document.title = 'Chain Ops | First Stop';
+
+    component._render = function () {
+      const values = component.renderVals();
+      const scope = Object.assign({}, values);
+      const events = [];
+      root.innerHTML = renderNode(sourceRoot, scope, events);
+      events.forEach((event) => {
+        const target = root.querySelector('[data-dc-event-' + event.id + ']');
+        if (!target || typeof event.handler !== 'function') return;
+        target.addEventListener(event.type, event.handler);
+        target.removeAttribute('data-dc-event-' + event.id);
+      });
+    };
+    component._render();
+  }
+
+  window.DCLogic = DCLogic;
+  window.addEventListener('DOMContentLoaded', mount);
+}());
+</script>
+<title>Chain Ops | First Stop</title></head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
+<style>
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url(https://fonts.gstatic.com/s/ibmplexsans/v23/zYXzKVElMYYaJe8bpLHnCwDKr932-G7dytD-Dmu1syxTKYbSAYZgVNW7Iw.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url(https://fonts.gstatic.com/s/ibmplexsans/v23/zYXzKVElMYYaJe8bpLHnCwDKr932-G7dytD-Dmu1syxaKYbSAYZgVNW7Iw.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* greek */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url(https://fonts.gstatic.com/s/ibmplexsans/v23/zYXzKVElMYYaJe8bpLHnCwDKr932-G7dytD-Dmu1syxdKYbSAYZgVNW7Iw.woff2) format('woff2');
+  unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url(https://fonts.gstatic.com/s/ibmplexsans/v23/zYXzKVElMYYaJe8bpLHnCwDKr932-G7dytD-Dmu1syxRKYbSAYZgVNW7Iw.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url(https://fonts.gstatic.com/s/ibmplexsans/v23/zYXzKVElMYYaJe8bpLHnCwDKr932-G7dytD-Dmu1syxQKYbSAYZgVNW7Iw.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url(https://fonts.gstatic.com/s/ibmplexsans/v23/zYXzKVElMYYaJe8bpLHnCwDKr932-G7dytD-Dmu1syxeKYbSAYZgVNU.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 500;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url(https://fonts.gstatic.com/s/ibmplexsans/v23/zYXzKVElMYYaJe8bpLHnCwDKr932-G7dytD-Dmu1syxTKYbSAYZgVNW7Iw.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 500;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url(https://fonts.gstatic.com/s/ibmplexsans/v23/zYXzKVElMYYaJe8bpLHnCwDKr932-G7dytD-Dmu1syxaKYbSAYZgVNW7Iw.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* greek */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 500;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url(https://fonts.gstatic.com/s/ibmplexsans/v23/zYXzKVElMYYaJe8bpLHnCwDKr932-G7dytD-Dmu1syxdKYbSAYZgVNW7Iw.woff2) format('woff2');
+  unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 500;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url(https://fonts.gstatic.com/s/ibmplexsans/v23/zYXzKVElMYYaJe8bpLHnCwDKr932-G7dytD-Dmu1syxRKYbSAYZgVNW7Iw.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 500;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url(https://fonts.gstatic.com/s/ibmplexsans/v23/zYXzKVElMYYaJe8bpLHnCwDKr932-G7dytD-Dmu1syxQKYbSAYZgVNW7Iw.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 500;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url(https://fonts.gstatic.com/s/ibmplexsans/v23/zYXzKVElMYYaJe8bpLHnCwDKr932-G7dytD-Dmu1syxeKYbSAYZgVNU.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 600;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url(https://fonts.gstatic.com/s/ibmplexsans/v23/zYXzKVElMYYaJe8bpLHnCwDKr932-G7dytD-Dmu1syxTKYbSAYZgVNW7Iw.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 600;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url(https://fonts.gstatic.com/s/ibmplexsans/v23/zYXzKVElMYYaJe8bpLHnCwDKr932-G7dytD-Dmu1syxaKYbSAYZgVNW7Iw.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* greek */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 600;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url(https://fonts.gstatic.com/s/ibmplexsans/v23/zYXzKVElMYYaJe8bpLHnCwDKr932-G7dytD-Dmu1syxdKYbSAYZgVNW7Iw.woff2) format('woff2');
+  unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 600;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url(https://fonts.gstatic.com/s/ibmplexsans/v23/zYXzKVElMYYaJe8bpLHnCwDKr932-G7dytD-Dmu1syxRKYbSAYZgVNW7Iw.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 600;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url(https://fonts.gstatic.com/s/ibmplexsans/v23/zYXzKVElMYYaJe8bpLHnCwDKr932-G7dytD-Dmu1syxQKYbSAYZgVNW7Iw.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 600;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url(https://fonts.gstatic.com/s/ibmplexsans/v23/zYXzKVElMYYaJe8bpLHnCwDKr932-G7dytD-Dmu1syxeKYbSAYZgVNU.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 700;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url(https://fonts.gstatic.com/s/ibmplexsans/v23/zYXzKVElMYYaJe8bpLHnCwDKr932-G7dytD-Dmu1syxTKYbSAYZgVNW7Iw.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 700;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url(https://fonts.gstatic.com/s/ibmplexsans/v23/zYXzKVElMYYaJe8bpLHnCwDKr932-G7dytD-Dmu1syxaKYbSAYZgVNW7Iw.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* greek */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 700;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url(https://fonts.gstatic.com/s/ibmplexsans/v23/zYXzKVElMYYaJe8bpLHnCwDKr932-G7dytD-Dmu1syxdKYbSAYZgVNW7Iw.woff2) format('woff2');
+  unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 700;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url(https://fonts.gstatic.com/s/ibmplexsans/v23/zYXzKVElMYYaJe8bpLHnCwDKr932-G7dytD-Dmu1syxRKYbSAYZgVNW7Iw.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 700;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url(https://fonts.gstatic.com/s/ibmplexsans/v23/zYXzKVElMYYaJe8bpLHnCwDKr932-G7dytD-Dmu1syxQKYbSAYZgVNW7Iw.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 700;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url(https://fonts.gstatic.com/s/ibmplexsans/v23/zYXzKVElMYYaJe8bpLHnCwDKr932-G7dytD-Dmu1syxeKYbSAYZgVNU.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+</style>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #0A0A0A; }
+  a { color: #fff; }
+  a:hover { color: #ED1C24; }
+  input, textarea, button, select { font: inherit; }
+  ::placeholder { color: #9C9C9C; }
+  @keyframes sheetUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  @media (max-width: 680px) {
+    .app-shell > div:first-child { gap: 10px !important; padding: 10px 12px !important; }
+    .app-shell > div:first-child > div:last-child { width: 100%; font-size: 11px !important; }
+    .dealer-device { width: auto !important; height: min(840px, calc(100dvh - 150px)) !important; min-height: 0 !important; aspect-ratio: 9 / 19.5; max-width: 100%; border-radius: 14px !important; }
+    .app-shell [style*="padding: 24px"] { padding: 16px !important; }
+    .app-shell [style*="min-width: 1060px"] { min-width: 1000px !important; }
+  }
+</style>
+</helmet>
+
+<template id="__bundler_thumbnail"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#0A0A0A"></rect><rect x="30" y="30" width="40" height="40" rx="20" fill="#ED1C24"></rect><rect x="43" y="43" width="14" height="14" rx="7" fill="#0A0A0A"></rect></svg></template>
+
+<div class="app-shell" style="font-family: 'IBM Plex Sans', Helvetica, sans-serif; background: #0A0A0A; color: #fff; min-height: 100vh; display: flex; flex-direction: column;">
+
+  <div style="display: flex; align-items: center; gap: 20px; padding: 14px 24px; background: #0A0A0A; border-bottom: 1px solid #ffffff; position: sticky; top: 0; z-index: 40; flex-wrap: wrap;">
+    <div style="display: flex; align-items: baseline; gap: 10px;">
+      <div style="font-weight: 700; font-size: 18.5px; letter-spacing: -0.01em;">First Stop</div>
+      <div style="font-size: 13px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.18em; color: #9C9C9C;">Chain Ops</div>
+    </div>
+    <div style="display: flex; gap: 4px; padding: 4px; background: #141414; border: 1px solid #2A2A2A; border-radius: 999px;">
+      <button onClick="{{ goHQ }}" style="border: 0; background: {{ hqBtnBg }}; color: {{ hqBtnFg }}; padding: 7px 16px; border-radius: 999px; font-size: 14.5px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer; white-space: nowrap;">HQ desktop</button>
+      <button onClick="{{ goDealer }}" style="border: 0; background: {{ dlBtnBg }}; color: {{ dlBtnFg }}; padding: 7px 16px; border-radius: 999px; font-size: 14.5px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer; white-space: nowrap;">Dealership</button>
+    </div>
+    <div style="flex: 1;"></div>
+    <div style="font-size: 13.5px; font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase; color: #9C9C9C;">{{ todayLabel }} · {{ dealerCount }} dealerships</div>
+  </div>
+
+  <sc-if value="{{ isHQ }}" hint-placeholder-val="{{ true }}">
+    <div style="flex: 1; display: flex; flex-direction: column;">
+
+      <div style="display: flex; gap: 28px; padding: 0 24px; background: #0A0A0A; border-bottom: 1px solid #242424;">
+        <sc-for list="{{ hqTabs }}" as="tab" hint-placeholder-count="3">
+          <button onClick="{{ tab.onClick }}" style="border: 0; background: transparent; padding: 13px 0 11px; font-size: 15.5px; font-weight: 600; cursor: pointer; white-space: nowrap; color: {{ tab.fg }}; border-bottom: 2px solid {{ tab.bar }};">{{ tab.label }}</button>
+        </sc-for>
+      </div>
+
+      <sc-if value="{{ showOverview }}" hint-placeholder-val="{{ true }}">
+        <div style="padding: 24px; display: flex; flex-direction: column; gap: 18px;">
+
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
+            <sc-for list="{{ kpis }}" as="k" hint-placeholder-count="4">
+              <div style="background: #141414; border: 1px solid #2A2A2A; border-radius: 14px; padding: 15px 17px; display: flex; flex-direction: column; gap: 6px;">
+                <div style="font-size: 12.5px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.14em; color: #9C9C9C;">{{ k.label }}</div>
+                <div style="display: flex; align-items: baseline; gap: 9px;">
+                  <div style="font-size: 32px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.1; color: {{ k.color }};">{{ k.value }}</div>
+                  <div style="font-size: 15px; color: #9C9C9C;">{{ k.sub }}</div>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+
+          <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+            <div style="font-size: 12.5px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.14em; color: #9C9C9C;">Overview layout</div>
+            <div style="display: flex; gap: 4px; padding: 4px; background: #141414; border: 1px solid #2A2A2A; border-radius: 999px;">
+              <button onClick="{{ setVarA }}" style="border: 0; background: {{ vaBg }}; color: {{ vaFg }}; padding: 6px 14px; border-radius: 999px; font-size: 14px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; cursor: pointer; white-space: nowrap;">A · Table</button>
+              <button onClick="{{ setVarB }}" style="border: 0; background: {{ vbBg }}; color: {{ vbFg }}; padding: 6px 14px; border-radius: 999px; font-size: 14px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; cursor: pointer; white-space: nowrap;">B · Grid</button>
+            </div>
+            <div style="flex: 1;"></div>
+            <sc-if value="{{ isVarA }}">
+              <label for="overview-sort" style="display: flex; align-items: center; gap: 8px; color: #9C9C9C; font-size: 12px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.1em;">Sort by
+                <select id="overview-sort" value="{{ overviewSort }}" onChange="{{ setOverviewSort }}" style="padding: 8px 30px 8px 11px; border: 1px solid #3A3A3A; border-radius: 8px; background: #141414; color: #ffffff; font-size: 13px; text-transform: none; letter-spacing: 0;">
+                  <option value="attention">Needs attention</option><option value="company">Company name A–Z</option><option value="rbc">RBC name A–Z</option>
+                </select>
+              </label>
+            </sc-if>
+            <button onClick="{{ toggleOverdueOnly }}" style="border: 1px solid {{ ooBorder }}; background: {{ ooBg }}; color: {{ ooFg }}; padding: 8px 16px; border-radius: 999px; font-size: 14px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; cursor: pointer; white-space: nowrap;">Needs attention only</button>
+          </div>
+
+          <sc-if value="{{ isVarA }}" hint-placeholder-val="{{ true }}">
+            <div style="background: #141414; border: 1px solid #2A2A2A; border-radius: 14px; overflow-x: auto;">
+              <div style="min-width: 1060px;">
+                <div style="display: grid; grid-template-columns: minmax(180px, 1.6fr) 140px 70px 130px minmax(200px, 1.4fr) 100px 74px; gap: 12px; padding: 12px 18px; border-bottom: 1px solid #ffffff; font-size: 12px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.13em; color: #9C9C9C;">
+                  <div>Company</div><div>RBC</div><div>Overdue</div><div>Completion</div><div>Next operation</div><div>Last update</div><div></div>
+                </div>
+                <sc-for list="{{ tableRows }}" as="r" hint-placeholder-count="10">
+                  <div style="display: grid; grid-template-columns: minmax(180px, 1.6fr) 140px 70px 130px minmax(200px, 1.4fr) 100px 74px; gap: 12px; padding: 13px 18px; border-bottom: 1px solid #242424; align-items: center; font-size: 16px;" style-hover="background: #1A1A1A;">
+                    <button onClick="{{ r.open }}" style="border: 0; background: transparent; padding: 0; text-align: left; font-size: 16px; font-weight: 600; cursor: pointer; color: #ffffff;" style-hover="color: #ED1C24;">{{ r.name }}</button>
+                    <div style="color: #9C9C9C; font-size: 15px;">{{ r.rbc }}</div>
+                    <div style="font-weight: 600; font-size: 16px; color: {{ r.overdueColor }};">{{ r.overdueLabel }}</div>
+                    <div style="display: flex; align-items: center; gap: 9px;">
+                      <div style="flex: 1; height: 5px; border-radius: 3px; background: #2A2A2A; overflow: hidden;">
+                        <div style="height: 100%; border-radius: 3px; width: {{ r.pctWidth }}; background: {{ r.pctColor }};"></div>
+                      </div>
+                      <div style="font-size: 14px; color: #C4C4C4; width: 34px; text-align: right;">{{ r.pctLabel }}</div>
+                    </div>
+                    <div style="font-size: 15px; color: #D4D4D4;">{{ r.nextTask }} <span style="color: #8A8A8A;">· {{ r.nextDue }}</span></div>
+                    <div style="font-size: 15px; color: {{ r.lastColor }};">{{ r.lastUpdate }}</div>
+                    <button onClick="{{ r.open }}" style="border: 1px solid #3F3F3F; background: transparent; color: #ffffff; padding: 6px 10px; border-radius: 999px; font-size: 13px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer; white-space: nowrap;" style-hover="background: #242424;">Open</button>
+                  </div>
+                </sc-for>
+                <div style="padding: 12px 18px; font-size: 15px; color: #9C9C9C;">{{ tableFooter }}</div>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ isVarB }}" hint-placeholder-val="{{ true }}">
+            <div style="background: #141414; border: 1px solid #2A2A2A; border-radius: 14px; padding: 18px;">
+              <div style="display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 20px;">
+                <sc-for list="{{ legend }}" as="l" hint-placeholder-count="5">
+                  <div style="display: flex; align-items: center; gap: 7px; font-size: 14px; white-space: nowrap; color: #C4C4C4;">
+                    <div style="width: 12px; height: 12px; border-radius: 3px; border: 1px solid {{ l.border }}; background: {{ l.bg }};"></div>{{ l.label }}
+                  </div>
+                </sc-for>
+              </div>
+              <div style="overflow: auto; max-height: 520px;">
+                <div style="min-width: 860px;">
+                  <div style="display: grid; grid-template-columns: minmax(170px, 1fr) minmax(120px, 0.7fr) repeat(6, minmax(64px, 96px)) 90px; gap: 6px; align-items: end; padding-bottom: 9px; border-bottom: 1px solid #ffffff; position: sticky; top: 0; background: #141414; z-index: 2;">
+                    <div style="font-size: 11.5px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.1em; color: #9C9C9C;">Company</div><div style="font-size: 11.5px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.1em; color: #9C9C9C;">RBC</div>
+                    <sc-for list="{{ gridCols }}" as="c" hint-placeholder-count="6">
+                      <div style="min-width: 0; font-size: 10.5px; line-height: 1.2; font-weight: 500; text-transform: uppercase; letter-spacing: 0.06em; overflow-wrap: anywhere; color: #9C9C9C;">{{ c.short }}</div>
+                    </sc-for>
+                    <div style="font-size: 11.5px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.1em; color: #9C9C9C; text-align: right; padding-right: 4px;">Overdue</div>
+                  </div>
+                  <div style="margin-top: 6px;">
+                    <sc-for list="{{ gridRegions }}" as="reg" hint-placeholder-count="5">
+                      <div style="margin-bottom: 10px;">
+                        <div style="font-size: 12.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.16em; color: #ED1C24; padding: 10px 0 7px;">RBC · {{ reg.name }} · {{ reg.count }}</div>
+                        <sc-for list="{{ reg.rows }}" as="row" hint-placeholder-count="8">
+                          <div style="display: grid; grid-template-columns: minmax(170px, 1fr) minmax(120px, 0.7fr) repeat(6, minmax(64px, 96px)) 90px; gap: 6px; align-items: center; padding: 3px 0;">
+                            <button onClick="{{ row.open }}" style="min-width: 0; white-space: normal; overflow-wrap: anywhere; border: 0; background: transparent; padding: 0; text-align: left; font-size: 15.5px; font-weight: 500; cursor: pointer; color: #E8E8E8;" style-hover="color: #ED1C24;">{{ row.name }}</button><div style="min-width: 0; white-space: normal; overflow-wrap: anywhere; font-size: 13px; color: #9C9C9C;">{{ row.rbc }}</div>
+                            <sc-for list="{{ row.cells }}" as="cell" hint-placeholder-count="6">
+                              <div title="{{ cell.title }}" style="height: 22px; border-radius: 4px; border: 1px solid {{ cell.border }}; background: {{ cell.bg }};"></div>
+                            </sc-for>
+                            <div style="text-align: right; font-size: 14.5px; font-weight: 600; padding-right: 4px; color: {{ row.overdueColor }};">{{ row.overdueLabel }}</div>
+                          </div>
+                        </sc-for>
+                      </div>
+                    </sc-for>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </sc-if>
+
+          <div style="background: #141414; border: 1px solid #2A2A2A; border-radius: 14px; padding: 18px;">
+            <div style="font-size: 12.5px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.14em; color: #9C9C9C; margin-bottom: 13px;">Next 14 days · chain-wide</div>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px;">
+              <sc-for list="{{ upcoming }}" as="u" hint-placeholder-count="4">
+                <div style="border: 1px solid #2A2A2A; border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 8px;">
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <div style="width: 8px; height: 8px; border-radius: 2px; background: {{ u.color }};"></div>
+                    <div style="font-size: 13px; font-weight: 500; letter-spacing: 0.09em; text-transform: uppercase; color: #9C9C9C;">{{ u.due }}</div>
+                  </div>
+                  <div style="font-size: 16px; font-weight: 600; line-height: 1.3;">{{ u.name }}</div>
+                  <div style="font-size: 15px; color: #ADADAD;">{{ u.progress }}</div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ showDetail }}" hint-placeholder-val="{{ true }}">
+        <div style="padding: 24px; display: flex; flex-direction: column; gap: 18px;">
+          <button onClick="{{ backToOverview }}" style="align-self: flex-start; border: 0; background: transparent; padding: 0; font-size: 15.5px; font-weight: 600; color: #9C9C9C; cursor: pointer;" style-hover="color: #ffffff;">‹ All dealerships</button>
+          <div style="display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; border-bottom: 1px solid #ffffff; padding-bottom: 16px;">
+            <div style="flex: 1; min-width: 240px;">
+              <div style="font-size: 27px; font-weight: 600; letter-spacing: -0.02em;">{{ detail.name }}</div>
+              <div style="font-size: 15.5px; color: #ADADAD; margin-top: 5px;">RBC {{ detail.rbc }} · last update {{ detail.lastUpdate }}</div>
+            </div>
+            <button onClick="{{ detail.edit }}" style="border: 1px solid #3F3F3F; background: transparent; color: #ffffff; padding: 11px 18px; border-radius: 999px; font-size: 14px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer; white-space: nowrap;">Edit company</button>
+            <button onClick="{{ openAdhoc }}" style="border: 0; background: #ffffff; color: #0A0A0A; padding: 11px 20px; border-radius: 999px; font-size: 14px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer; white-space: nowrap;">Add task</button>
+          </div>
+
+          <div style="display: flex; align-items: center; justify-content: flex-end; gap: 8px; color: #9C9C9C; font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em;">
+            <label for="task-sort">Sort tasks</label>
+            <select id="task-sort" value="{{ detailTaskSort }}" onChange="{{ setDetailTaskSort }}" style="padding: 8px 30px 8px 11px; border: 1px solid #3A3A3A; border-radius: 8px; background: #141414; color: #ffffff; font-size: 13px; text-transform: none; letter-spacing: 0;">
+              <option value="due">Due date</option><option value="name">Task name A–Z</option><option value="status">Status</option>
+            </select>
+          </div>
+
+          <div style="background: #141414; border: 1px solid #2A2A2A; border-radius: 14px; overflow-x: auto;">
+            <div style="min-width: 900px;">
+              <sc-for list="{{ detail.tasks }}" as="t" hint-placeholder-count="8">
+                <div style="display: grid; grid-template-columns: minmax(220px, 2fr) 130px 140px minmax(140px, 1.2fr) auto; gap: 12px; padding: 14px 18px; border-bottom: 1px solid #242424; align-items: center;">
+                  <div style="display: flex; flex-direction: column; gap: 4px;">
+                    <div style="font-size: 16px; font-weight: 600;">{{ t.name }}</div>
+                    <div style="font-size: 12px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.13em; color: #8A8A8A;">{{ t.category }}</div>
+                  </div>
+                  <div style="font-size: 15px; color: {{ t.dueColor }};">{{ t.dueLabel }}</div>
+                  <div>
+                    <span style="display: inline-block; padding: 5px 12px; border-radius: 999px; font-size: 13px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; background: {{ t.pillBg }}; color: {{ t.pillFg }}; border: 1px solid {{ t.pillBorder }};">{{ t.statusLabel }}</span>
+                  </div>
+                  <div style="font-size: 15px; color: #ADADAD;">{{ t.note }}</div>
+                  <div style="display: flex; gap: 6px; justify-content: flex-end;">
+                    <button onClick="{{ t.remind }}" style="border: 1px solid #ED1C24; background: transparent; color: #ffffff; padding: 6px 9px; border-radius: 999px; font-size: 11px; font-weight: 600; text-transform: uppercase; cursor: pointer;">Remind</button>
+                    <button onClick="{{ t.edit }}" style="border: 1px solid #3F3F3F; background: transparent; color: #ffffff; padding: 6px 9px; border-radius: 999px; font-size: 11px; font-weight: 600; text-transform: uppercase; cursor: pointer;">Edit</button>
+                    <button onClick="{{ t.archive }}" style="border: 1px solid #3F3F3F; background: transparent; color: #C4C4C4; padding: 6px 9px; border-radius: 999px; font-size: 11px; font-weight: 600; text-transform: uppercase; cursor: pointer;">Archive</button>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="background: #141414; border: 1px solid #2A2A2A; border-radius: 14px; padding: 18px;">
+            <div style="font-size: 12.5px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.14em; color: #9C9C9C; margin-bottom: 12px;">Activity</div>
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+              <sc-for list="{{ detail.activity }}" as="a" hint-placeholder-count="4">
+                <div style="display: flex; gap: 14px; font-size: 15.5px;">
+                  <div style="font-size: 13px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: #8A8A8A; min-width: 82px; padding-top: 2px;">{{ a.when }}</div>
+                  <div style="color: #E0E0E0;">{{ a.text }}</div>
+                </div>
+              </sc-for>
+              <sc-if value="{{ !detail.activity.length }}"><div style="font-size: 14px; color: #777777;">No task activity recorded.</div></sc-if>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ showPlan }}" hint-placeholder-val="{{ true }}">
+        <div style="padding: 24px; display: flex; flex-direction: column; gap: 18px;">
+          <div style="display: flex; align-items: flex-end; gap: 16px; flex-wrap: wrap; border-bottom: 1px solid #ffffff; padding-bottom: 16px;">
+            <div>
+              <div style="font-size: 22.5px; font-weight: 600; letter-spacing: -0.015em;">Annual plan 2026–2027</div>
+              <div style="font-size: 15.5px; color: #ADADAD; margin-top: 4px;">Annual tasks apply across all {{ dealerCount }} dealerships.</div>
+            </div>
+            <div style="flex: 1;"></div>
+            <button onClick="{{ openAdhoc }}" style="border: 0; background: #ffffff; color: #0A0A0A; padding: 11px 20px; border-radius: 999px; font-size: 14px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer; white-space: nowrap;">Add annual task</button>
+          </div>
+
+          <div style="background: #141414; border: 1px solid #2A2A2A; border-radius: 14px; padding: 18px; overflow-x: auto;">
+            <div style="min-width: 880px; position: relative;">
+              <sc-if value="{{ hasTodayMarker }}">
+                <div style="display: grid; grid-template-columns: 260px minmax(220px, 1fr) 62px; gap: 14px; height: 20px; align-items: center;">
+                  <div></div>
+                  <div style="position: relative; height: 20px;">
+                    <div style="position: absolute; left: {{ todayTimelineOffset }}; top: 1px; transform: translateX(-50%); color: rgba(237,28,36,0.9); font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; white-space: nowrap;">Today · {{ todayDateLabel }}</div>
+                  </div>
+                  <div></div>
+                </div>
+              </sc-if>
+              <div style="display: grid; grid-template-columns: 260px minmax(220px, 1fr) 62px; gap: 14px; padding-bottom: 9px; border-bottom: 1px solid #3A3A3A;">
+                <div></div>
+                <div style="display: grid; grid-template-columns: repeat(12, 1fr); gap: 3px;">
+                  <sc-for list="{{ months }}" as="m" hint-placeholder-count="12">
+                    <button onClick="{{ m.open }}" style="border: 0; background: transparent; padding: 3px 0; text-align: left; font-size: 12px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.08em; color: {{ m.color }}; cursor: pointer;">{{ m.label }}</button>
+                  </sc-for>
+                </div>
+                <div></div>
+              </div>
+              <sc-for list="{{ planRows }}" as="p" hint-placeholder-count="12">
+                <div style="display: grid; grid-template-columns: 260px minmax(220px, 1fr) 62px; gap: 14px; align-items: center; padding: 6px 0; border-bottom: 1px solid #1A1A1A;">
+                  <div style="display: flex; flex-direction: column; gap: 3px;">
+                    <div style="font-size: 15.5px; font-weight: 600;">{{ p.name }}</div>
+                    <div style="font-size: 12px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.12em; color: #8A8A8A;">{{ p.category }} · {{ p.donePct }} done</div>
+                  </div>
+                  <div style="display: grid; grid-template-columns: repeat(12, 1fr); gap: 3px; height: 26px; align-items: center;">
+                    <div style="grid-column: {{ p.col }}; height: 22px; border-radius: 999px; background: {{ p.color }}; border: 1px solid {{ p.barBorder }}; display: flex; align-items: center; padding: 0 10px; font-size: 12.5px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: {{ p.barFg }}; overflow: hidden; white-space: nowrap;">{{ p.barLabel }}</div>
+                  </div>
+                  <button onClick="{{ p.edit }}" style="border: 1px solid #3F3F3F; background: transparent; color: #ffffff; padding: 6px 9px; border-radius: 999px; font-size: 11px; font-weight: 600; text-transform: uppercase; cursor: pointer;">Edit</button>
+                </div>
+              </sc-for>
+              <sc-if value="{{ hasTodayMarker }}">
+                <div aria-hidden="true" style="position: absolute; top: 49px; bottom: 7px; left: 274px; right: 76px; display: grid; grid-template-columns: repeat(12, 1fr); gap: 3px; pointer-events: none; z-index: 3;">
+                  <div style="grid-column: {{ todayMonth }}; position: relative;">
+                    <div style="position: absolute; left: {{ todayDayOffset }}; top: 0; bottom: 0; border-left: 2px dotted rgba(237,28,36,0.78);"></div>
+                  </div>
+                </div>
+              </sc-if>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ planMonthOpen }}" hint-placeholder-val="{{ true }}">
+        <div style="position: fixed; inset: 0; z-index: 90; background: rgba(0,0,0,0.72); display: flex; align-items: center; justify-content: center; padding: 20px;">
+          <div style="width: 100%; max-width: 620px; max-height: 85vh; overflow: auto; background: #141414; border: 1px solid #333333; border-radius: 18px; padding: 22px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px;">
+              <div style="font-size: 20px; font-weight: 600;">{{ planMonthTitle }} tasks</div>
+              <button onClick="{{ closePlanMonth }}" style="border: 1px solid #3F3F3F; background: transparent; color: #ffffff; padding: 7px 12px; border-radius: 999px; cursor: pointer;">Close</button>
+            </div>
+            <div style="display: flex; flex-direction: column;">
+              <sc-for list="{{ planMonthTasks }}" as="t" hint-placeholder-count="8">
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid #2A2A2A;">
+                  <div><div style="font-weight: 600;">{{ t.name }}</div><div style="font-size: 13px; color: #9C9C9C; margin-top: 3px;">{{ t.due }} · {{ t.category }}</div></div>
+                  <button onClick="{{ t.edit }}" style="border: 1px solid #3F3F3F; background: transparent; color: #ffffff; padding: 7px 10px; border-radius: 999px; cursor: pointer;">Edit</button>
+                </div>
+              </sc-for>
+              <sc-if value="{{ !planMonthTasks.length }}"><div style="padding: 18px 0; color: #9C9C9C;">No tasks scheduled.</div></sc-if>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ showBroadcast }}" hint-placeholder-val="{{ true }}">
+        <div style="padding: 24px; display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; align-items: start;">
+          <div style="background: #141414; border: 1px solid #2A2A2A; border-radius: 14px; padding: 18px; display: flex; flex-direction: column; gap: 14px;">
+            <div style="font-size: 18.5px; font-weight: 600;">New broadcast</div>
+            <div style="display: flex; flex-wrap: wrap; gap: 7px;">
+              <sc-for list="{{ audiences }}" as="a" hint-placeholder-count="6">
+                <button onClick="{{ a.onClick }}" style="border: 1px solid {{ a.border }}; background: {{ a.bg }}; color: {{ a.fg }}; padding: 7px 14px; border-radius: 999px; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap;">{{ a.label }}</button>
+              </sc-for>
+            </div>
+            <textarea value="{{ draft }}" onChange="{{ setDraft }}" placeholder="Message to dealerships…" style="width: 100%; min-height: 120px; resize: vertical; padding: 14px; border: 1px solid #333333; border-radius: 16px; font-size: 16px; line-height: 1.55; color: #ffffff; background: #1A1A1A;"></textarea>
+            <label style="display: flex; flex-direction: column; gap: 8px; font-size: 13px; color: #9C9C9C;">
+              <span>Attachments</span>
+              <input type="file" multiple onChange="{{ attachBroadcast }}" style="max-width: 100%; color: #C4C4C4;" />
+            </label>
+            <sc-if value="{{ broadcastFiles.length }}"><div style="font-size: 14px; color: #C4C4C4;">Attached: {{ broadcastFileNames }}</div></sc-if>
+            <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
+              <button onClick="{{ send }}" style="border: 0; background: #ffffff; color: #0A0A0A; padding: 12px 24px; border-radius: 999px; font-size: 14px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer; white-space: nowrap;">Send to {{ audienceCount }}</button>
+              <div style="font-size: 15px; color: #9C9C9C;">{{ sendHint }}</div>
+            </div>
+          </div>
+          <div style="background: #141414; border: 1px solid #2A2A2A; border-radius: 14px; padding: 18px;">
+            <div style="font-size: 12.5px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.14em; color: #9C9C9C; margin-bottom: 13px;">Sent</div>
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+              <sc-for list="{{ sentList }}" as="s" hint-placeholder-count="3">
+                <div style="border: 1px solid #2A2A2A; border-radius: 12px; padding: 14px;">
+                  <div style="display: flex; justify-content: space-between; gap: 10px; font-size: 13px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: #9C9C9C; margin-bottom: 7px;">
+                    <div>{{ s.audience }}</div><div>{{ s.when }}</div>
+                  </div>
+                  <div style="font-size: 16px; line-height: 1.55;">{{ s.text }}</div>
+                  <sc-for list="{{ s.files }}" as="f" hint-placeholder-count="3"><a href="{{ f.data }}" download="{{ f.name }}" style="display: inline-block; margin-top: 8px; margin-right: 10px; color: #ED1C24;">{{ f.name }}</a></sc-for>
+                  <div style="font-size: 14px; color: #ED1C24; margin-top: 8px; font-weight: 500;">{{ s.readLabel }}</div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isDealer }}" hint-placeholder-val="{{ true }}">
+    <div style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 24px 16px 44px;">
+      <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: center;">
+        <div style="font-size: 12.5px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.14em; color: #9C9C9C;">Task list layout</div>
+        <div style="display: flex; gap: 4px; padding: 4px; background: #141414; border: 1px solid #2A2A2A; border-radius: 999px;">
+          <button onClick="{{ setDVarA }}" style="border: 0; background: {{ dvaBg }}; color: {{ dvaFg }}; padding: 6px 14px; border-radius: 999px; font-size: 14px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; cursor: pointer; white-space: nowrap;">A · Checklist</button>
+          <button onClick="{{ setDVarB }}" style="border: 0; background: {{ dvbBg }}; color: {{ dvbFg }}; padding: 6px 14px; border-radius: 999px; font-size: 14px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; cursor: pointer; white-space: nowrap;">B · Next up</button>
+        </div>
+      </div>
+
+      <div class="dealer-device" style="width: min(100%, 390px); height: auto; aspect-ratio: 9 / 19.5; min-height: 0; background: #0A0A0A; border: 1px solid #3F3F3F; border-radius: 20px; box-shadow: 0 0 0 4px #121212, 0 30px 70px -30px rgba(255,255,255,0.16); overflow: hidden; position: relative; display: flex; flex-direction: column;">
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 14px 24px 6px; font-size: 13.5px; font-weight: 500; color: #9C9C9C; letter-spacing: 0.06em;">
+          <div>9:41</div><div style="text-transform: uppercase; letter-spacing: 0.16em;">First Stop</div>
+        </div>
+
+        <sc-if value="{{ taskOpen }}" hint-placeholder-val="{{ true }}">
+          <div style="flex: 1; display: flex; flex-direction: column; overflow: hidden;">
+            <div style="display: flex; align-items: center; gap: 12px; padding: 8px 20px 14px; margin: 0 0 0; border-bottom: 1px solid #ffffff;">
+              <button onClick="{{ closeTask }}" style="border: 0; background: transparent; padding: 0; font-size: 21.5px; font-weight: 500; color: #ffffff; cursor: pointer; line-height: 1;">‹</button>
+              <div style="font-size: 18.5px; font-weight: 600;">Task</div>
+            </div>
+            <div style="flex: 1; overflow: auto; padding: 20px; display: flex; flex-direction: column; gap: 18px;">
+              <div>
+                <div style="font-size: 12px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.16em; color: #ED1C24;">{{ open.category }}</div>
+                <div style="font-size: 24.5px; font-weight: 600; letter-spacing: -0.015em; line-height: 1.22; margin-top: 8px;">{{ open.name }}</div>
+                <div style="font-size: 15.5px; color: {{ open.dueColor }}; margin-top: 8px; font-weight: 600;">{{ open.dueLabel }}</div>
+              </div>
+              <div style="font-size: 16.5px; line-height: 1.6; color: #C4C4C4;">{{ open.description }}</div>
+
+              <sc-if value="{{ open.needsPhoto }}" hint-placeholder-val="{{ true }}">
+                <div>
+                  <div style="font-size: 12px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.14em; color: #9C9C9C; margin-bottom: 9px;">Evidence photo required</div>
+                  <button onClick="{{ attachPhoto }}" style="width: 100%; height: 152px; border: 1px dashed {{ open.photoBorder }}; border-radius: 18px; background: {{ open.photoBg }}; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: {{ open.photoFg }};">
+                    <div style="font-size: 14px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase;">{{ open.photoLabel }}</div>
+                    <div style="font-size: 14.5px; color: {{ open.photoHintFg }};">{{ open.photoHint }}</div>
+                  </button>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ open.hasReason }}" hint-placeholder-val="{{ true }}">
+                <div style="border: 1px solid #333333; background: #1A1A1A; border-radius: 16px; padding: 14px;">
+                  <div style="font-size: 12px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.14em; color: #9C9C9C; margin-bottom: 6px;">Reason sent to HQ</div>
+                  <div style="font-size: 16px;">{{ open.reason }}</div>
+                </div>
+              </sc-if>
+
+              <div style="display: flex; flex-direction: column; gap: 9px;">
+                <sc-for list="{{ open.actions }}" as="act" hint-placeholder-count="3">
+                  <button onClick="{{ act.onClick }}" style="border: 1px solid {{ act.border }}; background: {{ act.bg }}; color: {{ act.fg }}; padding: 15px 20px; border-radius: 999px; font-size: 14.5px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer; text-align: center;">{{ act.label }}</button>
+                </sc-for>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ listOpen }}" hint-placeholder-val="{{ true }}">
+          <div style="flex: 1; display: flex; flex-direction: column; overflow: hidden;">
+            <div style="padding: 8px 20px 14px; border-bottom: 1px solid #ffffff;">
+              <div style="font-size: 22.5px; font-weight: 600; letter-spacing: -0.015em;">{{ myDealerName }}</div>
+              <div style="font-size: 15px; color: #9C9C9C; margin-top: 3px;">{{ myProgressLabel }}</div>
+            </div>
+
+            <sc-if value="{{ dealerTabTasks }}" hint-placeholder-val="{{ true }}">
+              <div style="flex: 1; overflow: auto; padding: 14px 20px 20px;">
+
+                <sc-if value="{{ isDVarB }}" hint-placeholder-val="{{ true }}">
+                  <div style="border: 1px solid #ED1C24; border-radius: 20px; padding: 18px; margin-bottom: 18px; background: #141414;">
+                    <div style="font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.16em; color: #ED1C24;">Next up</div>
+                    <div style="font-size: 20.5px; font-weight: 600; line-height: 1.25; margin: 9px 0 7px; letter-spacing: -0.01em;">{{ focus.name }}</div>
+                    <div style="font-size: 15px; color: {{ focus.dueColor }}; font-weight: 600;">{{ focus.dueLabel }}</div>
+                    <div style="font-size: 16px; color: #a4a4a4; line-height: 1.55; margin-top: 9px;">{{ focus.description }}</div>
+                    <div style="display: flex; gap: 9px; margin-top: 16px;">
+                      <button onClick="{{ focus.done }}" style="flex: 1; border: 0; background: #14AE5C; color: #ffffff; padding: 14px; border-radius: 999px; font-size: 14px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer;">{{ focus.doneLabel }}</button>
+                      <button onClick="{{ focus.open }}" style="border: 1px solid #3F3F3F; background: transparent; color: #ffffff; padding: 14px 20px; border-radius: 999px; font-size: 14px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer;">Details</button>
+                    </div>
+                  </div>
+                </sc-if>
+
+                <sc-for list="{{ groups }}" as="g" hint-placeholder-count="3">
+                  <div style="margin-bottom: 20px;">
+                    <div style="display: flex; align-items: baseline; gap: 9px; padding: 4px 0 10px;">
+                      <div style="font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.18em; white-space: nowrap; color: {{ g.color }};">{{ g.label }}</div>
+                      <div style="font-size: 12px; font-weight: 500; color: #7C7C7C; white-space: nowrap;">{{ g.count }}</div>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 9px;">
+                      <sc-for list="{{ g.items }}" as="it" hint-placeholder-count="3">
+                        <div style="display: flex; align-items: center; gap: 13px; border: 1px solid {{ it.cardBorder }}; background: {{ it.cardBg }}; border-radius: 18px; padding: 13px 15px;">
+                          <button onClick="{{ it.toggle }}" style="width: 28px; height: 28px; flex: 0 0 28px; border-radius: 999px; border: 1.5px solid {{ it.boxBorder }}; background: {{ it.boxBg }}; color: {{ it.boxFg }}; cursor: pointer; font-size: 16.5px; font-weight: 700; display: flex; align-items: center; justify-content: center;">{{ it.mark }}</button>
+                          <button onClick="{{ it.open }}" style="flex: 1; border: 0; background: transparent; padding: 0; text-align: left; cursor: pointer;">
+                            <div style="font-size: 17px; font-weight: 600; line-height: 1.3; color: {{ it.titleColor }}; text-decoration: {{ it.titleDeco }};">{{ it.name }}</div>
+                            <div style="font-size: 14px; color: #8A8A8A; margin-top: 4px;">{{ it.meta }}</div>
+                          </button>
+                          <div style="font-size: 19.5px; color: #6A6A6A;">›</div>
+                        </div>
+                      </sc-for>
+                    </div>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ dealerTabUpcoming }}" hint-placeholder-val="{{ true }}">
+              <div style="flex: 1; overflow: auto; padding: 8px 20px 20px;">
+                <sc-for list="{{ dealerUpcoming }}" as="u" hint-placeholder-count="5">
+                  <div style="display: flex; gap: 16px; padding: 15px 0; border-bottom: 1px solid #242424;">
+                    <div style="min-width: 78px; display: flex; flex-direction: column; align-items: flex-start;">
+                      <div style="font-size: 18.5px; font-weight: 600;">{{ u.day }}</div>
+                      <div style="font-size: 12px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.12em; color: #8A8A8A;">{{ u.month }}</div>
+                    </div>
+                    <div style="flex: 1;">
+                      <div style="font-size: 17px; font-weight: 600; line-height: 1.3;">{{ u.name }}</div>
+                      <div style="font-size: 14.5px; color: #9C9C9C; margin-top: 4px;">{{ u.meta }}</div>
+                    </div>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ dealerTabMessages }}" hint-placeholder-val="{{ true }}">
+              <div style="flex: 1; overflow: auto; padding: 14px 20px 20px; display: flex; flex-direction: column; gap: 11px;">
+                <sc-for list="{{ sentList }}" as="s" hint-placeholder-count="3">
+                  <div style="border: 1px solid #2A2A2A; border-radius: 18px; padding: 15px;">
+                    <div style="display: flex; justify-content: space-between; font-size: 12px; font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase; color: #9C9C9C; margin-bottom: 7px;">
+                      <div>HQ · {{ s.audience }}</div><div>{{ s.when }}</div>
+                    </div>
+                    <div style="font-size: 16.5px; line-height: 1.55;">{{ s.text }}</div>
+                    <sc-for list="{{ s.files }}" as="f" hint-placeholder-count="3"><a href="{{ f.data }}" download="{{ f.name }}" style="display: inline-block; margin-top: 8px; margin-right: 10px; color: #ED1C24;">{{ f.name }}</a></sc-for>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+
+            <div style="display: flex; border-top: 1px solid #2A2A2A; background: #121212;">
+              <sc-for list="{{ dealerTabs }}" as="tb" hint-placeholder-count="3">
+                <button onClick="{{ tb.onClick }}" style="flex: 1; border: 0; background: transparent; padding: 15px 0 24px; cursor: pointer; font-size: 13px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: {{ tb.fg }};">{{ tb.label }}</button>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ reasonOpen }}" hint-placeholder-val="{{ true }}">
+          <div style="position: absolute; inset: 0; background: rgba(0,0,0,0.7); display: flex; align-items: flex-end; animation: fadeIn 0.18s ease;">
+            <div style="width: 100%; background: #141414; border-top: 1px solid #333333; border-radius: 24px 24px 38px 38px; padding: 20px 20px 30px; animation: sheetUp 0.22s ease; max-height: 92%; overflow-y: auto;">
+              <div style="font-size: 18.5px; font-weight: 600; margin-bottom: 5px;">Why is this not needed?</div>
+              <div style="font-size: 15px; color: #9C9C9C; margin-bottom: 16px;">HQ sees the reason, so nobody has to call.</div>
+              <div style="display: flex; flex-direction: column; gap: 9px;">
+                <sc-for list="{{ reasons }}" as="r" hint-placeholder-count="4">
+                  <button onClick="{{ r.onClick }}" style="border: 1px solid #333333; background: #1A1A1A; color: #ffffff; padding: 15px 18px; border-radius: 999px; font-size: 16px; font-weight: 500; text-align: left; cursor: pointer;" style-hover="border-color: #ED1C24;">{{ r.label }}</button>
+                </sc-for>
+                <div style="display: flex; flex-direction: column; gap: 9px; padding-top: 5px; border-top: 1px solid #242424; margin-top: 5px;">
+                  <div style="font-size: 12px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.14em; color: #9C9C9C;">Other reason</div>
+                  <textarea value="{{ reasonText }}" onChange="{{ setReasonText }}" placeholder="" style="width: 100%; min-height: 72px; resize: vertical; padding: 13px 15px; border: 1px solid #333333; border-radius: 16px; font-size: 16px; line-height: 1.5; background: #1A1A1A; color: #ffffff;"></textarea>
+                  <button onClick="{{ submitReasonText }}" style="border: 0; background: #ffffff; color: #0A0A0A; padding: 14px; border-radius: 999px; font-size: 14px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer;">Send reason</button>
+                </div>
+                <button onClick="{{ closeReason }}" style="border: 0; background: transparent; padding: 13px; font-size: 14px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #9C9C9C; cursor: pointer;">Cancel</button>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ editorOpen }}" hint-placeholder-val="{{ true }}">
+    <div style="position: fixed; inset: 0; z-index: 92; background: rgba(0,0,0,0.76); display: flex; align-items: center; justify-content: center; padding: 16px;">
+      <div style="width: 100%; max-width: 500px; max-height: 90vh; overflow: auto; background: #141414; border: 1px solid #333333; border-radius: 18px; padding: 22px; display: flex; flex-direction: column; gap: 14px;">
+        <div style="font-size: 20px; font-weight: 600;">{{ editorTitle }}</div>
+        <sc-if value="{{ editorType === 'task' }}">
+          <label style="display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: #9C9C9C; text-transform: uppercase;">Task name<input value="{{ editorName }}" onChange="{{ setEditorName }}" style="padding: 11px 13px; border: 1px solid #333333; border-radius: 10px; background: #1A1A1A; color: #ffffff; text-transform: none;" /></label>
+          <label style="display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: #9C9C9C; text-transform: uppercase;">Due date<input type="date" value="" data-dc-value="{{ editorDue }}" onChange="{{ setEditorDue }}" style="padding: 11px 13px; border: 1px solid #333333; border-radius: 10px; background: #1A1A1A; color: #ffffff; color-scheme: dark; text-transform: none;" /></label>
+          <label style="display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: #9C9C9C; text-transform: uppercase;">Category<select value="{{ editorCategory }}" onChange="{{ setEditorCategory }}" style="padding: 11px 13px; border: 1px solid #333333; border-radius: 10px; background: #1A1A1A; color: #ffffff; text-transform: none;"><option>Sesonki</option><option>Markkinointi</option><option>Ketju</option><option>Koulutus</option><option>Tilaukset</option><option>Ad-hoc</option></select></label>
+          <label style="display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: #9C9C9C; text-transform: uppercase;">Description<textarea value="{{ editorDesc }}" onChange="{{ setEditorDesc }}" style="min-height: 90px; padding: 11px 13px; border: 1px solid #333333; border-radius: 10px; background: #1A1A1A; color: #ffffff; text-transform: none;"></textarea></label>
+        </sc-if>
+        <sc-if value="{{ editorType === 'dealer' }}">
+          <label style="display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: #9C9C9C; text-transform: uppercase;">Company name<input value="{{ editorCompany }}" onChange="{{ setEditorCompany }}" style="padding: 11px 13px; border: 1px solid #333333; border-radius: 10px; background: #1A1A1A; color: #ffffff; text-transform: none;" /></label>
+          <label style="display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: #9C9C9C; text-transform: uppercase;">RBC<select value="{{ editorRbc }}" onChange="{{ setEditorRbc }}" style="padding: 11px 13px; border: 1px solid #333333; border-radius: 10px; background: #1A1A1A; color: #ffffff; text-transform: none;"><sc-for list="{{ rbcOptions }}" as="r"><option value="{{ r }}">{{ r }}</option></sc-for></select></label>
+        </sc-if>
+        <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px;">
+          <button onClick="{{ closeEditor }}" style="border: 1px solid #3F3F3F; background: transparent; color: #ffffff; padding: 10px 15px; border-radius: 999px; cursor: pointer;">Cancel</button>
+          <button onClick="{{ saveEditor }}" style="border: 0; background: #ffffff; color: #0A0A0A; padding: 10px 17px; border-radius: 999px; font-weight: 600; cursor: pointer;">Save changes</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ archiveOpen }}" hint-placeholder-val="{{ true }}">
+    <div style="position: fixed; inset: 0; z-index: 92; background: rgba(0,0,0,0.76); display: flex; align-items: center; justify-content: center; padding: 16px;">
+      <div style="width: 100%; max-width: 620px; max-height: 90vh; overflow: auto; background: #141414; border: 1px solid #333333; border-radius: 18px; padding: 22px;">
+        <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 16px;">
+          <div><div style="font-size: 20px; font-weight: 600;">Task archive</div><div style="margin-top: 5px; color: #9C9C9C;">{{ archiveTaskName }} · {{ archiveCompany }}</div></div>
+          <button onClick="{{ closeArchive }}" style="border: 1px solid #3F3F3F; background: transparent; color: #ffffff; padding: 7px 12px; border-radius: 999px; cursor: pointer;">Close</button>
+        </div>
+        <div style="padding: 12px; background: #1A1A1A; border: 1px solid #2A2A2A; border-radius: 10px; margin-bottom: 16px; font-size: 14px; color: #C4C4C4;">Created in {{ archiveCreated }} · Current status: {{ archiveStatus }} · {{ archiveDue }}<div style="margin-top: 7px; color: #9C9C9C;">{{ archiveCategory }}</div><div style="margin-top: 5px; color: #E0E0E0;">{{ archiveDescription }}</div></div>
+        <div style="font-size: 12px; color: #9C9C9C; text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 10px;">Change history</div>
+        <div style="display: flex; flex-direction: column; gap: 9px;">
+          <sc-for list="{{ archiveEvents }}" as="e" hint-placeholder-count="10">
+            <div style="padding: 11px 12px; border-left: 2px solid #ED1C24; background: #1A1A1A;">
+              <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 5px; font-size: 12px; color: #9C9C9C;"><span>{{ e.when }}</span><span>{{ e.actor }}</span></div>
+              <div style="font-size: 14px; color: #E0E0E0; margin-top: 5px;">{{ e.text }}</div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ adhocOpen }}" hint-placeholder-val="{{ true }}">
+    <div style="position: fixed; inset: 0; z-index: 90; background: rgba(0,0,0,0.72); display: flex; align-items: center; justify-content: center; padding: 20px; animation: fadeIn 0.18s ease;">
+      <div style="width: 100%; max-width: 440px; background: #141414; border: 1px solid #333333; border-radius: 20px; padding: 22px; display: flex; flex-direction: column; gap: 15px;">
+        <div style="font-size: 19.5px; font-weight: 600;">{{ adhocTitle }}</div>
+        <sc-if value="{{ !annualMode }}"><div style="display: flex; flex-direction: column; gap: 7px;">
+          <div style="font-size: 12px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.14em; color: #9C9C9C;">Dealership</div>
+          <select value="{{ adhocDealer }}" onChange="{{ setAdhocDealer }}" style="padding: 12px 14px; border: 1px solid #333333; border-radius: 999px; font-size: 16px; background: #1A1A1A; color: #ffffff;">
+            <sc-for list="{{ dealerOptions }}" as="o" hint-placeholder-count="6">
+              <option value="{{ o.id }}">{{ o.name }}</option>
+            </sc-for>
+          </select>
+        </div></sc-if>
+        <div style="display: flex; flex-direction: column; gap: 7px;">
+          <div style="font-size: 12px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.14em; color: #9C9C9C;">Task</div>
+          <input value="{{ adhocName }}" onChange="{{ setAdhocName }}" placeholder="esim. Aulan karkkitilaus" style="padding: 12px 16px; border: 1px solid #333333; border-radius: 999px; font-size: 16px; background: #1A1A1A; color: #ffffff;" />
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 7px;">
+          <div style="font-size: 12px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.14em; color: #9C9C9C;">Due</div>
+          <input value="" data-dc-value="{{ adhocDue }}" onChange="{{ setAdhocDue }}" type="date" style="padding: 12px 16px; border: 1px solid #333333; border-radius: 999px; font-size: 16px; background: #1A1A1A; color: #ffffff; color-scheme: dark;" />
+        </div>
+        <div style="display: flex; gap: 9px; justify-content: flex-end;">
+          <button onClick="{{ closeAdhoc }}" style="border: 1px solid #3F3F3F; background: transparent; color: #ffffff; padding: 11px 20px; border-radius: 999px; font-size: 14px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer;">Cancel</button>
+          <button onClick="{{ addAdhoc }}" style="border: 0; background: #ffffff; color: #0A0A0A; padding: 11px 22px; border-radius: 999px; font-size: 14px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer;">{{ adhocAction }}</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ toast }}" hint-placeholder-val="{{ true }}">
+    <div style="position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); z-index: 95; background: #ffffff; color: #0A0A0A; padding: 12px 22px; border-radius: 999px; font-size: 14px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; animation: fadeIn 0.2s ease;">{{ toast }}</div>
+  </sc-if>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;startRole&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;HQ&quot;,&quot;Dealership&quot;],&quot;default&quot;:&quot;HQ&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Prototype&quot;},&quot;startVariant&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;A&quot;,&quot;B&quot;],&quot;default&quot;:&quot;A&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Prototype&quot;},&quot;dealershipCount&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:60,&quot;min&quot;:6,&quot;max&quot;:60,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Data&quot;},&quot;overdueOnlyDefault&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Data&quot;}}">
+const MY = 'd12';
+const TODAY = new Date();
+TODAY.setHours(0, 0, 0, 0);
+const MON = ['tammi','helmi','maalis','huhti','touko','kesä','heinä','elo','syys','loka','marras','joulu'];
+const RED = '#ED1C24';
+const CAT_STYLE = {
+  'Sesonki': { bg: '#ffffff', fg: '#0A0A0A', border: '#ffffff' },
+  'Markkinointi': { bg: RED, fg: '#ffffff', border: RED },
+  'Ketju': { bg: '#333333', fg: '#ffffff', border: '#3F3F3F' },
+  'Koulutus': { bg: 'transparent', fg: '#ffffff', border: '#ffffff' },
+  'Tilaukset': { bg: '#1A1A1A', fg: '#C4C4C4', border: '#3F3F3F' },
+  'Ad-hoc': { bg: RED, fg: '#ffffff', border: RED }
+};
+const DOT = { 'Sesonki': '#ffffff', 'Markkinointi': RED, 'Ketju': '#7C7C7C', 'Koulutus': '#ffffff', 'Tilaukset': '#3F3F3F', 'Ad-hoc': RED };
+const STATUS = {
+  todo: { label: 'To do', bg: 'transparent', fg: '#ADADAD', border: '#3F3F3F' },
+  doing: { label: 'In progress', bg: '#242424', fg: '#ffffff', border: '#555555' },
+  done: { label: 'Done', bg: '#14AE5C', fg: '#ffffff', border: '#14AE5C' },
+  na: { label: 'Not needed', bg: '#1A1A1A', fg: '#7C7C7C', border: '#2A2A2A' }
+};
+const CITIES = ['Helsinki Konala','Helsinki Herttoniemi','Espoo Suomenoja','Espoo Kivenlahti','Vantaa Petikko','Vantaa Tammisto','Kerava','Porvoo','Lohja','Hyvinkää','Riihimäki','Tampere Lakalaiva','Tampere Kaleva','Nokia','Valkeakoski','Hämeenlinna','Forssa','Lahti Renkomäki','Lahti Kariniemi','Heinola','Kouvola','Kotka','Lappeenranta','Imatra','Mikkeli','Savonlinna','Varkaus','Kuopio Kolmisoppi','Kuopio Petonen','Iisalmi','Joensuu','Kitee','Jyväskylä Seppälä','Jyväskylä Palokka','Äänekoski','Jämsä','Turku Länsikeskus','Turku Kupittaa','Kaarina','Salo','Raisio','Uusikaupunki','Pori','Rauma','Seinäjoki','Vaasa','Kokkola','Pietarsaari','Kauhajoki','Oulu Kaakkuri','Oulu Rusko','Kempele','Raahe','Kajaani','Kuusamo','Rovaniemi','Kemi','Tornio','Sodankylä','Ivalo'];
+const MANAGERS = ['Anni Laakso','Petri Halme','Sari Nieminen','Jukka Rantala','Mika Vuorinen','Tiina Koskela','Ville Ahonen','Riikka Saari','Janne Peltola','Heli Mäkelä'];
+const TASKS = [
+  { id: 't1', name: 'Ennakkotilaustuotteiden valmistelu', category: 'Tilaukset', due: '2026-09-05', m: 1, span: 2, short: 'Ennakkotilaus', desc: 'Käy läpi ennakkotilauslista ja vahvista määrät ketjun järjestelmässä.' },
+  { id: 't2', name: 'Ketjuhinnastot käytettävissä', category: 'Ketju', due: '2026-09-11', m: 1, span: 1, short: 'Ketjuhinnasto', desc: 'Tarkista että syksyn ketjuhinnasto on tulostettu ja kassajärjestelmässä.' },
+  { id: 't3', name: 'POS-materiaalit liikkeessä', category: 'Markkinointi', due: '2026-09-12', m: 1, span: 1, photo: true, short: 'POS-materiaali', desc: 'Aseta syyskampanjan POS-materiaalit esille myymälään ja aulaan.' },
+  { id: 't4', name: 'Talvirengassesongin valmistelu', category: 'Sesonki', due: '2026-09-15', m: 1, span: 3, photo: true, short: 'Talvisesonki', desc: 'Varastopaikat, hotellirenkaiden lajittelu ja ajanvarauskalenterin avaus.' },
+  { id: 't5', name: 'Työharjoittelupäivät', category: 'Koulutus', due: '2026-09-25', m: 2, span: 2, short: 'Harjoittelu', desc: 'Ilmoita harjoittelupaikkojen määrä ja vastuuhenkilö.' },
+  { id: 't6', name: 'Aulan karkkitilaus', category: 'Tilaukset', due: '2026-09-30', m: 1, span: 1, short: 'Aulatilaus', desc: 'Tilaa aulan karkit ja kynät ketjun verkkokaupasta.' },
+  { id: 't7', name: 'Liikekäynti (TOSU)', category: 'Ketju', due: '2026-10-02', m: 2, span: 1, short: 'Liikekäynti', desc: 'Valmistele toimintasuunnitelma aluepäällikön käyntiä varten.' },
+  { id: 't8', name: 'MARY kokous', category: 'Ketju', due: '2026-11-06', m: 3, span: 1, short: 'MARY', desc: 'Ilmoittaudu kokoukseen ja lähetä käsiteltävät asiat etukäteen.' },
+  { id: 't9', name: 'Vuosisopimukset', category: 'Ketju', due: '2026-12-15', m: 4, span: 2, short: 'Vuosisopimus', desc: 'Käy läpi yritysasiakkaiden vuosisopimukset ja päivitä hinnat.' },
+  { id: 't10', name: 'Kevään markkinointikampanjan suunnittelu', category: 'Markkinointi', due: '2027-01-20', m: 5, span: 2, short: 'Kevätkampanja', desc: 'Suunnittele paikallinen kampanja ja varaa mediat.' },
+  { id: 't11', name: 'Kynät ja esitteet aulaan', category: 'Tilaukset', due: '2027-03-02', m: 7, span: 1, short: 'Esitteet', desc: 'Tilaa kevään esitteet ja kynät aulaan.' },
+  { id: 't12', name: 'Kesärengassesongin valmistelu', category: 'Sesonki', due: '2027-03-16', m: 7, span: 3, photo: true, short: 'Kesäsesonki', desc: 'Kesärenkaiden esillepano, hotellirenkaiden palautukset ja ajanvaraus.' }
+];
+const REASONS = ['Ei koske tätä liikettä','Tehty jo aiemmin','Materiaali ei ole saapunut','Sovittu aluepäällikön kanssa'];
+
+function daysTo(iso) {
+  const d = new Date(iso + 'T00:00:00');
+  return Math.round((d - TODAY) / 86400000);
+}
+function isoWeek(date) {
+  const weekDate = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const day = weekDate.getUTCDay() || 7;
+  weekDate.setUTCDate(weekDate.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(weekDate.getUTCFullYear(), 0, 1));
+  return Math.ceil(((weekDate - yearStart) / 86400000 + 1) / 7);
+}
+function dueText(iso) {
+  const d = new Date(iso + 'T00:00:00');
+  const n = daysTo(iso);
+  const stamp = d.getDate() + '.' + (d.getMonth() + 1) + '.' + d.getFullYear();
+  if (n < 0) return stamp + ' · ' + (-n) + ' d late';
+  if (n === 0) return stamp + ' · today';
+  if (n === 1) return stamp + ' · tomorrow';
+  return stamp + ' · in ' + n + ' d';
+}
+function planMonthOf(iso) {
+  return ((new Date(iso + 'T00:00:00').getMonth() - 8 + 12) % 12) + 1;
+}
+
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    let seed = 20260909;
+    const rnd = () => { seed = (seed * 1664525 + 1013904223) % 4294967296; return seed / 4294967296; };
+    const count = Math.max(6, Math.min(60, props.dealershipCount || 60));
+    this.dealers = CITIES.slice(0, count).map((c, i) => ({
+      id: 'd' + i, company: c + ' Oy', rbc: MANAGERS[i % MANAGERS.length],
+      lastDays: Math.floor(rnd() * 14)
+    }));
+    const st = {};
+    this.dealers.forEach((d) => TASKS.forEach((t) => {
+      const r = rnd();
+      const late = daysTo(t.due) < 0;
+      let s = 'todo';
+      if (daysTo(t.due) > 60) s = r < 0.12 ? 'doing' : 'todo';
+      else if (late) s = r < 0.62 ? 'done' : r < 0.74 ? 'doing' : r < 0.82 ? 'na' : 'todo';
+      else s = r < 0.42 ? 'done' : r < 0.56 ? 'doing' : r < 0.63 ? 'na' : 'todo';
+      st[d.id + ':' + t.id] = s;
+    }));
+    ['t1','t2','t3','t4','t6','t7','t8'].forEach((k) => { st[MY + ':' + k] = 'todo'; });
+    st[MY + ':t5'] = 'done';
+    st[MY + ':t2'] = 'doing';
+    this.state = {
+      role: props.startRole === 'Dealership' ? 'dealer' : 'hq',
+      hqTab: 'overview', hqVariant: props.startVariant === 'B' ? 'B' : 'A',
+      overdueOnly: !!props.overdueOnlyDefault, overviewSort: 'attention', detailTaskSort: 'due',
+      selected: null, dealerVariant: 'A', dealerTab: 'tasks', openTask: null,
+      statuses: st, reasons: {}, photos: {}, adhoc: [], annualTasks: [], taskEdits: {}, events: {}, reminders: {},
+      reasonFor: null, reasonText: '', adhocOpen: false, annualMode: false, adhocDealer: 'all', adhocName: '', adhocDue: '2026-09-30',
+      editorType: '', editorId: '', editorDealerId: '', editorOpen: false, editorName: '', editorDue: '2026-09-30', editorCategory: 'Ketju', editorDesc: '', editorCompany: '', editorRbc: '',
+      archiveOpen: false, archiveDealerId: '', archiveTaskId: '', planMonth: null, broadcastFiles: [], reminderAnswers: {},
+      draft: '', audience: 'Needs attention', toast: '',
+      sent: [
+        { audience: 'All dealerships', when: '2.9.2026', text: 'Talvisesongin ennakkotilaukset sulkeutuvat 5.9. Tarkistakaa määrät ajoissa.', reads: 54 },
+        { audience: 'Verkkokauppa', when: '28.8.2026', text: 'Verkkokaupan noutotilaukset näkyvät nyt kassajärjestelmässä. Tarkistakaa noutopisteen ohjeet.', reads: 11 }
+      ]
+    };
+    try {
+      const saved = JSON.parse(localStorage.getItem('chain-ops-state') || 'null');
+      if (saved) {
+        this.state = Object.assign({}, this.state, saved.state || {});
+        this.dealers = saved.dealers || this.dealers;
+      }
+    } catch (error) {
+      console.warn('[chain-ops] Could not restore saved data:', error);
+    }
+    this.scheduleDailyRefresh();
+  }
+
+  scheduleDailyRefresh() {
+    const now = new Date();
+    const nextDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+    this._dayTimer = setTimeout(() => {
+      const current = new Date();
+      TODAY.setTime(new Date(current.getFullYear(), current.getMonth(), current.getDate()).getTime());
+      this.setState({ todayVersion: current.getTime() });
+      this.scheduleDailyRefresh();
+    }, nextDay.getTime() - now.getTime() + 25);
+  }
+
+    setState(next, shouldRender) {
+    this.state = Object.assign({}, this.state, next);
+    try { localStorage.setItem('chain-ops-state', JSON.stringify({ state: this.state, dealers: this.dealers })); }
+    catch (error) { console.warn('[chain-ops] Could not save data:', error); }
+      if (shouldRender !== false) this._render();
+  }
+
+  recordEvent(dealerId, taskId, text) {
+    const key = dealerId + ':' + taskId;
+    const events = Object.assign({}, this.state.events);
+    const actor = this.state.role === 'hq' ? 'HQ' : ((this.dealers.find((dealer) => dealer.id === dealerId) || {}).company || 'Dealership');
+    events[key] = (events[key] || []).concat([{ at: new Date().toISOString(), actor: actor, text: text }]);
+    this.setState({ events: events });
+  }
+
+  flash(msg) {
+    this.setState({ toast: msg });
+    clearTimeout(this._t);
+    this._t = setTimeout(() => this.setState({ toast: '' }), 2200);
+  }
+  setStatus(dealerId, taskId, s) {
+    const statuses = Object.assign({}, this.state.statuses);
+    const previous = statuses[dealerId + ':' + taskId] || 'todo';
+    if (previous === s) return;
+    statuses[dealerId + ':' + taskId] = s;
+    const key = dealerId + ':' + taskId;
+    const events = Object.assign({}, this.state.events);
+    const actor = this.state.role === 'hq' ? 'HQ' : ((this.dealers.find((dealer) => dealer.id === dealerId) || {}).company || 'Dealership');
+    const changedAt = new Date().toISOString();
+    const additions = [{ at: changedAt, actor: actor, text: 'Status changed: ' + STATUS[previous].label + ' → ' + STATUS[s].label }];
+    const reminderAnswers = Object.assign({}, this.state.reminderAnswers);
+    const sentReminders = this.state.reminders[key] || [];
+    if (this.state.role !== 'hq' && sentReminders.length) {
+      reminderAnswers[key] = (reminderAnswers[key] || []).concat([{ reminderAt: sentReminders[sentReminders.length - 1], answeredAt: changedAt, status: STATUS[s].label, actor: actor }]);
+      additions.push({ at: changedAt, actor: actor, text: 'Reminder answered: status set to ' + STATUS[s].label });
+    }
+    events[key] = (events[key] || []).concat(additions);
+    this.setState({ statuses: statuses, events: events, reminderAnswers: reminderAnswers });
+  }
+  sendReason(text) {
+    const taskId = this.state.reasonFor;
+    const rs = Object.assign({}, this.state.reasons);
+    rs[MY + ':' + taskId] = text;
+    this.setStatus(MY, taskId, 'na');
+    this.setState({ reasons: rs, reasonFor: null, reasonText: '' });
+    this.recordEvent(MY, taskId, 'Feedback sent: “' + text + '”');
+    this.flash('Reason sent to HQ');
+  }
+  tasksFor(dealerId) {
+    return TASKS.concat(this.state.annualTasks || [], this.state.adhoc.filter((a) => a.dealerId === dealerId))
+      .map((task) => Object.assign({}, task, this.state.taskEdits[task.id] || {}))
+      .sort((a, b) => a.due.localeCompare(b.due));
+  }
+  allPlanTasks() {
+    return TASKS.concat(this.state.annualTasks || [])
+      .map((task) => Object.assign({}, task, this.state.taskEdits[task.id] || {}))
+      .sort((a, b) => a.due.localeCompare(b.due));
+  }
+  openTaskEditor(taskId, dealerId) {
+    const task = (dealerId ? this.tasksFor(dealerId) : this.allPlanTasks()).find((item) => item.id === taskId);
+    if (!task) return;
+    this.setState({
+      editorOpen: true, editorType: 'task', editorId: taskId, editorDealerId: dealerId || '',
+      editorName: task.name, editorDue: task.due, editorCategory: task.category,
+      editorDesc: task.desc || ''
+    });
+  }
+  openDealerEditor(dealerId) {
+    const dealer = this.dealers.find((item) => item.id === dealerId);
+    if (!dealer) return;
+    this.setState({ editorOpen: true, editorType: 'dealer', editorId: dealerId, editorCompany: dealer.company, editorRbc: dealer.rbc });
+  }
+  saveEditor() {
+    if (this.state.editorType === 'dealer') {
+      const dealerIndex = this.dealers.findIndex((item) => item.id === this.state.editorId);
+      const company = this.state.editorCompany.trim();
+      if (dealerIndex < 0 || !company) { this.flash('Company name is required'); return; }
+      const dealers = this.dealers.slice();
+      dealers[dealerIndex] = Object.assign({}, dealers[dealerIndex], { company: company, rbc: this.state.editorRbc });
+      this.dealers = dealers;
+      this.setState({ editorOpen: false });
+      this.flash('Company details updated');
+      return;
+    }
+    const task = (this.state.editorDealerId ? this.tasksFor(this.state.editorDealerId) : this.allPlanTasks()).find((item) => item.id === this.state.editorId);
+    const name = this.state.editorName.trim();
+    if (!task || !name || !this.state.editorDue) { this.flash('Task name and due date are required'); return; }
+    const values = { name: name, due: this.state.editorDue, category: this.state.editorCategory, desc: this.state.editorDesc.trim(), m: planMonthOf(this.state.editorDue) };
+    const changes = Object.keys(values).filter((field) => (task[field] || '') !== values[field])
+      .map((field) => field + ': “' + (task[field] || '—') + '” → “' + (values[field] || '—') + '”');
+    if (!changes.length) { this.setState({ editorOpen: false }); return; }
+    const taskEdits = Object.assign({}, this.state.taskEdits, { [task.id]: Object.assign({}, this.state.taskEdits[task.id] || {}, values) });
+    const events = Object.assign({}, this.state.events);
+    const dealerIds = task.adhoc
+      ? Array.from(new Set(this.state.adhoc.filter((item) => item.id === task.id).map((item) => item.dealerId)))
+      : this.dealers.map((dealer) => dealer.id);
+    dealerIds.forEach((dealerId) => {
+      const key = dealerId + ':' + task.id;
+      events[key] = (events[key] || []).concat([{ at: new Date().toISOString(), actor: 'HQ', text: 'Task edited: ' + changes.join('; ') }]);
+    });
+    this.setState({ taskEdits: taskEdits, events: events, editorOpen: false });
+    this.flash('Task updated');
+  }
+  sendReminder(dealerId, taskId) {
+    const task = this.tasksFor(dealerId).find((item) => item.id === taskId);
+    if (!task) return;
+    const key = dealerId + ':' + taskId;
+    const reminders = Object.assign({}, this.state.reminders);
+    const sentAt = new Date().toISOString();
+    reminders[key] = (reminders[key] || []).concat([sentAt]);
+    const events = Object.assign({}, this.state.events);
+    events[key] = (events[key] || []).concat([{ at: sentAt, actor: 'HQ', text: 'Reminder sent for “' + task.name + '”' }]);
+    this.setState({ reminders: reminders, events: events });
+    this.flash('Reminder sent to ' + (this.dealers.find((dealer) => dealer.id === dealerId) || {}).company);
+  }
+  openArchive(dealerId, taskId) {
+    this.setState({ archiveOpen: true, archiveDealerId: dealerId, archiveTaskId: taskId });
+  }
+  statusOf(dealerId, taskId) {
+    return this.state.statuses[dealerId + ':' + taskId] || 'todo';
+  }
+  overdueCount(dealerId) {
+    return this.tasksFor(dealerId).filter((t) => daysTo(t.due) < 0 && ['todo','doing'].indexOf(this.statusOf(dealerId, t.id)) >= 0).length;
+  }
+  donePct(dealerId) {
+    const ts = this.tasksFor(dealerId).filter((t) => daysTo(t.due) < 21);
+    if (!ts.length) return 100;
+    const ok = ts.filter((t) => ['done','na'].indexOf(this.statusOf(dealerId, t.id)) >= 0).length;
+    return Math.round((ok / ts.length) * 100);
+  }
+  nextTaskFor(dealerId) {
+    const open = this.tasksFor(dealerId)
+      .filter((t) => ['todo','doing'].indexOf(this.statusOf(dealerId, t.id)) >= 0)
+      .sort((a, b) => daysTo(a.due) - daysTo(b.due));
+    return open[0] || null;
+  }
+
+  renderVals() {
+    const s = this.state;
+    const isHQ = s.role === 'hq';
+    const seg = (on) => ({ bg: on ? '#ffffff' : 'transparent', fg: on ? '#0A0A0A' : '#ADADAD' });
+    const hqSeg = seg(isHQ), dlSeg = seg(!isHQ);
+
+    const totalOverdue = this.dealers.reduce((a, d) => a + this.overdueCount(d.id), 0);
+    const dealersLate = this.dealers.filter((d) => this.overdueCount(d.id) > 0).length;
+    const avgDone = Math.round(this.dealers.reduce((a, d) => a + this.donePct(d.id), 0) / this.dealers.length);
+    const next14 = TASKS.filter((t) => daysTo(t.due) >= 0 && daysTo(t.due) <= 14);
+
+    let rows = this.dealers.map((d) => ({ d: d, od: this.overdueCount(d.id), pct: this.donePct(d.id), nt: this.nextTaskFor(d.id) }));
+    if (s.overdueOnly) rows = rows.filter((r) => r.od > 0 || r.pct < 60);
+    if (s.overviewSort === 'company') rows.sort((a, b) => a.d.company.localeCompare(b.d.company));
+    else if (s.overviewSort === 'rbc') rows.sort((a, b) => a.d.rbc.localeCompare(b.d.rbc) || a.d.company.localeCompare(b.d.company));
+    else rows.sort((a, b) => b.od - a.od || a.pct - b.pct);
+    const shown = rows.slice(0, 12);
+
+    const tableRows = shown.map((r) => ({
+      name: r.d.company, rbc: r.d.rbc,
+      overdueLabel: r.od ? String(r.od) : '—',
+      overdueColor: r.od ? RED : '#7C7C7C',
+      pctLabel: r.pct + '%', pctWidth: r.pct + '%',
+      pctColor: r.pct >= 80 ? '#14AE5C' : r.pct >= 55 ? '#9C9C9C' : RED,
+      nextTask: r.nt ? r.nt.name : 'Nothing open', nextDue: r.nt ? dueText(r.nt.due) : '',
+      lastUpdate: r.d.lastDays === 0 ? 'today' : r.d.lastDays + ' d ago',
+      lastColor: r.d.lastDays > 7 ? RED : '#C4C4C4',
+      open: () => this.setState({ selected: r.d.id, hqTab: 'detail' })
+    }));
+
+    const gridTasks = TASKS.slice(0, 6);
+    const cellFor = (dealerId, t) => {
+      const st = this.statusOf(dealerId, t.id);
+      const late = daysTo(t.due) < 0 && ['todo','doing'].indexOf(st) >= 0;
+      const bg = late ? RED : st === 'done' ? '#14AE5C' : st === 'doing' ? '#6A6A6A' : st === 'na' ? '#1A1A1A' : 'transparent';
+      return { bg: bg, border: late ? RED : st === 'done' ? '#14AE5C' : '#3A3A3A', title: t.name + ' — ' + (late ? 'Overdue' : STATUS[st].label) };
+    };
+    const gridRegions = Array.from(new Set(this.dealers.map((dealer) => dealer.rbc))).map((rn) => {
+      const ds = this.dealers.filter((d) => d.rbc === rn);
+      return {
+        name: rn, count: ds.length + ' shops',
+        rows: ds.map((d) => {
+          const od = this.overdueCount(d.id);
+          return {
+            name: d.company, rbc: d.rbc, cells: gridTasks.map((t) => cellFor(d.id, t)),
+            overdueLabel: od ? od + ' late' : '—',
+            overdueColor: od ? RED : '#6A6A6A',
+            open: () => this.setState({ selected: d.id, hqTab: 'detail' })
+          };
+        })
+      };
+    }).filter((r) => r.rows.length);
+
+    const selD = this.dealers.filter((d) => d.id === (s.selected || MY))[0] || this.dealers[0];
+    const detailTaskRows = this.tasksFor(selD.id);
+    if (s.detailTaskSort === 'name') detailTaskRows.sort((a, b) => a.name.localeCompare(b.name));
+    else if (s.detailTaskSort === 'status') {
+      const statusOrder = { todo: 0, doing: 1, done: 2, na: 3 };
+      detailTaskRows.sort((a, b) => statusOrder[this.statusOf(selD.id, a.id)] - statusOrder[this.statusOf(selD.id, b.id)] || a.due.localeCompare(b.due));
+    }
+    const detail = {
+      name: selD.company, rbc: selD.rbc,
+      lastUpdate: selD.lastDays === 0 ? 'today' : selD.lastDays + ' d ago',
+      edit: () => this.openDealerEditor(selD.id),
+      tasks: detailTaskRows.map((t) => {
+        const st = this.statusOf(selD.id, t.id);
+        const late = daysTo(t.due) < 0 && ['todo','doing'].indexOf(st) >= 0;
+        const reason = s.reasons[selD.id + ':' + t.id];
+        return {
+          name: t.name, category: t.adhoc ? 'Ad-hoc · HQ' : t.category,
+          dueLabel: dueText(t.due), dueColor: late ? RED : '#C4C4C4',
+          statusLabel: late && st !== 'done' && st !== 'na' ? 'Overdue' : STATUS[st].label,
+          pillBg: late && st !== 'done' && st !== 'na' ? RED : STATUS[st].bg,
+          pillFg: late && st !== 'done' && st !== 'na' ? '#ffffff' : STATUS[st].fg,
+          pillBorder: late && st !== 'done' && st !== 'na' ? RED : STATUS[st].border,
+          note: st === 'na' && reason ? '“' + reason + '”' : st === 'done' && t.photo ? 'Photo attached' : '',
+          remind: () => this.sendReminder(selD.id, t.id),
+          edit: () => this.openTaskEditor(t.id, selD.id),
+          archive: () => this.openArchive(selD.id, t.id)
+        };
+      }),
+      activity: Object.keys(s.events).filter((key) => key.indexOf(selD.id + ':') === 0)
+        .flatMap((key) => s.events[key].map((event) => ({ when: new Date(event.at).toLocaleString(), text: event.actor + ' · ' + event.text })))
+        .sort((a, b) => b.when.localeCompare(a.when)).slice(0, 12)
+    };
+
+    const months = Array.from({ length: 12 }, (_, i) => {
+      const m = (8 + i) % 12, y = i < 4 ? 26 : 27;
+      return { label: MON[m] + ' ' + y, color: i === 0 ? RED : '#8A8A8A', open: () => this.setState({ planMonth: i + 1 }) };
+    });
+    const planRows = this.allPlanTasks().map((t) => {
+      const done = this.dealers.filter((d) => ['done','na'].indexOf(this.statusOf(d.id, t.id)) >= 0).length;
+      const cs = CAT_STYLE[t.category] || CAT_STYLE['Ad-hoc'];
+      return {
+        name: t.name, category: t.category,
+        donePct: Math.round((done / this.dealers.length) * 100) + '%',
+        col: planMonthOf(t.due) + ' / span ' + (t.span || 1),
+        color: cs.bg, barBorder: cs.border, barFg: cs.fg,
+        barLabel: (t.span || 1) > 1 ? t.category : '',
+        edit: () => this.openTaskEditor(t.id, '')
+      };
+    });
+    const selectedMonth = s.planMonth;
+    const monthEntry = selectedMonth ? months[selectedMonth - 1] : null;
+    const planMonthTasks = selectedMonth ? this.allPlanTasks().filter((task) => planMonthOf(task.due) === selectedMonth).map((task) => ({
+      name: task.name, due: dueText(task.due), category: task.category,
+      edit: () => this.openTaskEditor(task.id, '')
+    })) : [];
+    const planStart = new Date(2026, 8, 1);
+    const planEnd = new Date(2027, 8, 1);
+    const hasTodayMarker = TODAY >= planStart && TODAY < planEnd;
+    const todayMonth = planMonthOf(TODAY.toISOString().slice(0, 10));
+    const daysInCurrentMonth = new Date(TODAY.getFullYear(), TODAY.getMonth() + 1, 0).getDate();
+    const todayDayOffset = (((TODAY.getDate() - 0.5) / daysInCurrentMonth) * 100) + '%';
+    const todayTimelineOffset = (((todayMonth - 1) + ((TODAY.getDate() - 0.5) / daysInCurrentMonth)) / 12 * 100) + '%';
+    const archiveTask = s.archiveOpen ? this.tasksFor(s.archiveDealerId).find((task) => task.id === s.archiveTaskId) : null;
+    const archiveKey = s.archiveDealerId + ':' + s.archiveTaskId;
+    const archiveLog = (s.events[archiveKey] || []).slice().sort((a, b) => a.at.localeCompare(b.at));
+    const archiveEvents = archiveLog.map((event) => ({
+      when: new Date(event.at).toLocaleString(), actor: event.actor, text: event.text
+    }));
+    if (archiveTask && !archiveEvents.some((event) => event.text.indexOf('Task created:') === 0)) {
+      archiveEvents.unshift({ when: 'Annual plan · 2026–2027', actor: 'HQ', text: 'Task created: “' + archiveTask.name + '” due ' + archiveTask.due });
+    }
+    if (archiveTask && !(s.reminders[archiveKey] || []).length && !archiveLog.some((event) => event.text.indexOf('Reminder sent:') === 0)) {
+      archiveEvents.push({ when: 'No reminders sent', actor: 'System', text: 'No task reminders recorded.' });
+    }
+
+    const audienceList = ['Needs attention','All dealerships','Verkkokauppa','Raskas kalusto'];
+    const audCount = s.audience === 'All dealerships' ? this.dealers.length
+      : s.audience === 'Needs attention' ? dealersLate
+      : s.audience === 'Verkkokauppa' ? Math.round(this.dealers.length * 0.45)
+      : Math.round(this.dealers.length * 0.3);
+    const audiences = audienceList.map((a) => ({
+      label: a, onClick: () => this.setState({ audience: a }),
+      bg: s.audience === a ? '#ffffff' : 'transparent',
+      fg: s.audience === a ? '#0A0A0A' : '#C4C4C4',
+      border: s.audience === a ? '#ffffff' : '#3A3A3A'
+    }));
+
+    const myTasks = this.tasksFor(MY).filter((t) => daysTo(t.due) <= 40).sort((a, b) => daysTo(a.due) - daysTo(b.due));
+    const itemFor = (t) => {
+      const st = this.statusOf(MY, t.id);
+      const late = daysTo(t.due) < 0 && ['todo','doing'].indexOf(st) >= 0;
+      const done = st === 'done', na = st === 'na';
+      return {
+        name: t.name,
+        meta: na ? 'Not needed · ' + (s.reasons[MY + ':' + t.id] || '') : (late ? 'Overdue' : STATUS[st].label) + ' · ' + dueText(t.due),
+        mark: done ? '✓' : na ? '–' : '',
+        boxBg: done ? '#14AE5C' : 'transparent',
+        boxBorder: done ? '#14AE5C' : late ? RED : '#555555',
+        boxFg: done ? '#ffffff' : '#ADADAD',
+        cardBg: late ? 'rgba(237,28,36,0.12)' : '#141414',
+        cardBorder: late ? RED : '#2A2A2A',
+        titleColor: done || na ? '#9C9C9C' : '#ffffff',
+        titleDeco: done ? 'line-through' : 'none',
+        toggle: () => this.setStatus(MY, t.id, done ? 'todo' : 'done'),
+        open: () => this.setState({ openTask: t.id })
+      };
+    };
+    const groupDefs = [
+      { label: 'Overdue', color: RED, test: (t) => daysTo(t.due) < 0 },
+      { label: 'Today', color: '#ffffff', test: (t) => daysTo(t.due) === 0 },
+      { label: 'This week', color: '#ffffff', test: (t) => daysTo(t.due) > 0 && daysTo(t.due) <= 7 },
+      { label: 'Later', color: '#9C9C9C', test: (t) => daysTo(t.due) > 7 }
+    ];
+    const focusTask = this.nextTaskFor(MY) || myTasks[0];
+    const listSource = s.dealerVariant === 'B' ? myTasks.filter((t) => !focusTask || t.id !== focusTask.id) : myTasks;
+    const groups = groupDefs.map((g) => {
+      const items = listSource.filter(g.test);
+      return { label: g.label, color: g.color, count: items.length, items: items.map(itemFor) };
+    }).filter((g) => g.count);
+
+    const openT = s.openTask ? this.tasksFor(MY).filter((t) => t.id === s.openTask)[0] : null;
+    let open = null;
+    if (openT) {
+      const st = this.statusOf(MY, openT.id);
+      const late = daysTo(openT.due) < 0 && ['todo','doing'].indexOf(st) >= 0;
+      const hasPhoto = !!s.photos[openT.id];
+      const acts = [];
+      if (st !== 'doing' && st !== 'done') acts.push({ label: 'Mark in progress', bg: '#242424', fg: '#ffffff', border: '#555555', onClick: () => this.setStatus(MY, openT.id, 'doing') });
+      const blocked = openT.photo && !hasPhoto && st !== 'done';
+      acts.push({
+        label: st === 'done' ? 'Done · tap to reopen' : blocked ? 'Attach photo to mark done' : 'Mark done',
+        bg: st === 'done' ? '#1A1A1A' : blocked ? 'transparent' : '#14AE5C',
+        fg: st === 'done' ? '#9C9C9C' : blocked ? '#7C7C7C' : '#ffffff',
+        border: st === 'done' ? '#333333' : blocked ? '#333333' : '#14AE5C',
+        onClick: () => {
+          if (blocked) { this.flash('Photo required first'); return; }
+          this.setStatus(MY, openT.id, st === 'done' ? 'todo' : 'done');
+          if (st !== 'done') this.flash('Done · HQ sees it now');
+        }
+      });
+      acts.push({ label: st === 'na' ? 'Not needed · change' : 'Not needed', bg: 'transparent', fg: '#C4C4C4', border: '#3F3F3F', onClick: () => this.setState({ reasonFor: openT.id }) });
+      open = {
+        category: openT.adhoc ? 'Ad-hoc · from HQ' : openT.category, name: openT.name,
+        dueLabel: dueText(openT.due), dueColor: late ? RED : '#C4C4C4',
+        description: openT.desc || 'HQ added this task for your shop.',
+        needsPhoto: !!openT.photo,
+        photoLabel: hasPhoto ? 'kuva_liitetty.jpg' : 'Take or attach photo',
+        photoHint: hasPhoto ? 'Visible to HQ · tap to replace' : 'Shop floor, materials in place',
+        photoBg: hasPhoto ? 'rgba(20,174,92,0.16)' : '#141414',
+        photoBorder: hasPhoto ? '#14AE5C' : '#3F3F3F',
+        photoFg: hasPhoto ? '#14AE5C' : '#ffffff',
+        photoHintFg: hasPhoto ? '#ADADAD' : '#8A8A8A',
+        hasReason: st === 'na' && !!s.reasons[MY + ':' + openT.id],
+        reason: s.reasons[MY + ':' + openT.id],
+        actions: acts
+      };
+    }
+
+    const dealerUpcoming = this.tasksFor(MY).filter((t) => daysTo(t.due) >= -3).sort((a, b) => daysTo(a.due) - daysTo(b.due)).map((t) => {
+      const d = new Date(t.due + 'T00:00:00');
+      const st = this.statusOf(MY, t.id);
+      return { day: String(d.getDate()) + '.' + (d.getMonth() + 1) + '.', month: String(d.getFullYear()), name: t.name, meta: (t.adhoc ? 'Ad-hoc' : t.category) + ' · ' + STATUS[st].label };
+    });
+
+    const myOpenCount = this.tasksFor(MY).filter((t) => daysTo(t.due) <= 14 && ['todo','doing'].indexOf(this.statusOf(MY, t.id)) >= 0).length;
+    const tabBtn = (id, label) => ({ label: label, fg: s.dealerTab === id ? '#ffffff' : '#6A6A6A', onClick: () => this.setState({ dealerTab: id, openTask: null }) });
+    const hqTab = (id, label) => ({ label: label, fg: s.hqTab === id ? '#ffffff' : '#8A8A8A', bar: s.hqTab === id ? RED : 'transparent', onClick: () => this.setState({ hqTab: id }) });
+
+    const vA = s.hqVariant === 'A', dA = s.dealerVariant === 'A';
+
+    return {
+      isHQ: isHQ, isDealer: !isHQ, dealerCount: this.dealers.length,
+      todayLabel: TODAY.getDate() + '.' + (TODAY.getMonth() + 1) + '.' + TODAY.getFullYear() + ' · vk ' + isoWeek(TODAY),
+      goHQ: () => this.setState({ role: 'hq' }), goDealer: () => this.setState({ role: 'dealer' }),
+      hqBtnBg: hqSeg.bg, hqBtnFg: hqSeg.fg, dlBtnBg: dlSeg.bg, dlBtnFg: dlSeg.fg,
+      hqTabs: [hqTab('overview', 'Overview'), hqTab('plan', 'Annual plan'), hqTab('broadcast', 'Broadcast')],
+      showOverview: s.hqTab === 'overview', showDetail: s.hqTab === 'detail',
+      showPlan: s.hqTab === 'plan', showBroadcast: s.hqTab === 'broadcast',
+      kpis: [
+        { label: 'Overdue tasks', value: String(totalOverdue), sub: 'across ' + dealersLate + ' shops', color: RED },
+        { label: 'Completion this month', value: avgDone + '%', sub: 'chain average', color: '#ffffff' },
+        { label: 'Operations next 14 days', value: String(next14.length), sub: 'chain-wide', color: '#ffffff' },
+        { label: 'No update in 7+ days', value: String(this.dealers.filter((d) => d.lastDays > 7).length), sub: 'shops to check', color: RED }
+      ],
+      isVarA: vA, isVarB: !vA,
+      setVarA: () => this.setState({ hqVariant: 'A' }), setVarB: () => this.setState({ hqVariant: 'B' }),
+      vaBg: vA ? '#ffffff' : 'transparent', vaFg: vA ? '#0A0A0A' : '#ADADAD',
+      vbBg: !vA ? '#ffffff' : 'transparent', vbFg: !vA ? '#0A0A0A' : '#ADADAD',
+      toggleOverdueOnly: () => this.setState({ overdueOnly: !s.overdueOnly }),
+      overviewSort: s.overviewSort,
+      setOverviewSort: (e) => this.setState({ overviewSort: e.target.value }),
+      detailTaskSort: s.detailTaskSort,
+      setDetailTaskSort: (e) => this.setState({ detailTaskSort: e.target.value }),
+      ooBg: s.overdueOnly ? RED : 'transparent', ooFg: s.overdueOnly ? '#ffffff' : '#C4C4C4', ooBorder: s.overdueOnly ? RED : '#3A3A3A',
+      tableRows: tableRows,
+      tableFooter: 'Showing ' + shown.length + ' of ' + rows.length + (s.overdueOnly ? ' shops needing attention' : s.overviewSort === 'attention' ? ' dealerships, worst first' : s.overviewSort === 'company' ? ' dealerships, company A–Z' : ' dealerships, RBC A–Z'),
+      legend: [
+        { label: 'Overdue', bg: RED, border: RED }, { label: 'Done', bg: '#14AE5C', border: '#14AE5C' },
+        { label: 'In progress', bg: '#6A6A6A', border: '#6A6A6A' }, { label: 'Not needed', bg: '#1A1A1A', border: '#3A3A3A' },
+        { label: 'To do', bg: 'transparent', border: '#3A3A3A' }
+      ],
+      gridCols: gridTasks.map((t) => ({ short: t.short })),
+      gridRegions: gridRegions,
+      upcoming: next14.map((t) => {
+        const done = this.dealers.filter((d) => ['done','na'].indexOf(this.statusOf(d.id, t.id)) >= 0).length;
+        return { name: t.name, due: dueText(t.due), color: DOT[t.category], progress: done + ' / ' + this.dealers.length + ' shops ready' };
+      }),
+      detail: detail,
+      backToOverview: () => this.setState({ hqTab: 'overview', selected: null }),
+      months: months, planRows: planRows,
+      hasTodayMarker: hasTodayMarker, todayMonth: todayMonth, todayDayOffset: todayDayOffset, todayTimelineOffset: todayTimelineOffset,
+      todayDateLabel: new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' }).format(TODAY),
+      planMonthOpen: !!selectedMonth, planMonthTitle: monthEntry ? monthEntry.label : '', planMonthTasks: planMonthTasks,
+      closePlanMonth: () => this.setState({ planMonth: null }),
+      archiveOpen: s.archiveOpen,
+      archiveTaskName: archiveTask ? archiveTask.name : '',
+      archiveCompany: (this.dealers.find((dealer) => dealer.id === s.archiveDealerId) || {}).company || '',
+      archiveCreated: archiveTask && archiveTask.createdAt ? new Date(archiveTask.createdAt).toLocaleString()
+        : archiveLog.some((event) => event.text.indexOf('Task created:') === 0) ? new Date(archiveLog.find((event) => event.text.indexOf('Task created:') === 0).at).toLocaleString()
+        : 'Annual plan · 2026–2027',
+      archiveCategory: archiveTask ? archiveTask.category : '',
+      archiveDescription: archiveTask ? archiveTask.desc || 'No description provided.' : '',
+      archiveStatus: archiveTask ? STATUS[this.statusOf(s.archiveDealerId, archiveTask.id)].label : '',
+      archiveDue: archiveTask ? dueText(archiveTask.due) : '', archiveEvents: archiveEvents,
+      closeArchive: () => this.setState({ archiveOpen: false }),
+      audiences: audiences, audienceCount: audCount + ' shops',
+      draft: s.draft, setDraft: (e) => this.setState({ draft: e.target.value }, false),
+      broadcastFiles: s.broadcastFiles,
+      broadcastFileNames: s.broadcastFiles.map((file) => file.name).join(', '),
+      attachBroadcast: (e) => {
+        const files = Array.from(e.target.files || []);
+        const oversized = files.find((file) => file.size > 1048576);
+        if (oversized) { this.flash('Each attachment must be 1 MB or smaller'); e.target.value = ''; return; }
+        Promise.all(files.map((file) => new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve({ name: file.name, type: file.type, data: reader.result });
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        }))).then((added) => this.setState({ broadcastFiles: s.broadcastFiles.concat(added) }))
+          .catch(() => this.flash('Could not read attachment'));
+        e.target.value = '';
+      },
+      sendHint: s.audience === 'Needs attention' ? 'Only shops with overdue tasks' : s.audience === 'Verkkokauppa' ? 'Shops handling verkkokauppa orders' : s.audience === 'Raskas kalusto' ? 'Shops with raskas kalusto service' : 'Delivered as push + in-app',
+      send: () => {
+        if (!s.draft.trim()) { this.flash('Write a message first'); return; }
+        this.setState({ sent: [{ audience: s.audience, when: 'just now', text: s.draft.trim(), reads: 0, files: s.broadcastFiles.slice() }].concat(s.sent), draft: '', broadcastFiles: [] });
+        this.flash('Sent to ' + audCount + ' dealerships');
+      },
+      sentList: s.sent.map((m) => ({ audience: m.audience, when: m.when, text: m.text, files: m.files || [], readLabel: m.reads ? m.reads + ' read' : 'Delivered' })),
+      myDealerName: this.dealers.filter((d) => d.id === MY)[0].company,
+      myProgressLabel: myOpenCount ? myOpenCount + ' tasks open · next 14 days' : 'All clear for the next two weeks',
+      isDVarA: dA, isDVarB: !dA,
+      setDVarA: () => this.setState({ dealerVariant: 'A' }), setDVarB: () => this.setState({ dealerVariant: 'B' }),
+      dvaBg: dA ? '#ffffff' : 'transparent', dvaFg: dA ? '#0A0A0A' : '#ADADAD',
+      dvbBg: !dA ? '#ffffff' : 'transparent', dvbFg: !dA ? '#0A0A0A' : '#ADADAD',
+      dealerTabs: [tabBtn('tasks', 'Tasks'), tabBtn('upcoming', 'Upcoming'), tabBtn('messages', 'Messages')],
+      dealerTabTasks: s.dealerTab === 'tasks', dealerTabUpcoming: s.dealerTab === 'upcoming', dealerTabMessages: s.dealerTab === 'messages',
+      listOpen: !s.openTask, taskOpen: !!s.openTask,
+      groups: groups,
+      focus: focusTask ? {
+        name: focusTask.name, dueLabel: dueText(focusTask.due),
+        dueColor: daysTo(focusTask.due) < 0 ? RED : '#C4C4C4',
+        description: focusTask.desc || 'HQ added this task for your shop.',
+        doneLabel: focusTask.photo ? 'Add photo & finish' : 'Mark done',
+        done: () => { if (focusTask.photo) { this.setState({ openTask: focusTask.id }); return; } this.setStatus(MY, focusTask.id, 'done'); this.flash('Done · HQ sees it now'); },
+        open: () => this.setState({ openTask: focusTask.id })
+      } : null,
+      open: open,
+      closeTask: () => this.setState({ openTask: null }),
+      attachPhoto: () => {
+        const p = Object.assign({}, s.photos); p[s.openTask] = !p[s.openTask];
+        const events = Object.assign({}, s.events), key = MY + ':' + s.openTask;
+        events[key] = (events[key] || []).concat([{ at: new Date().toISOString(), actor: this.dealers.find((dealer) => dealer.id === MY).company, text: 'Evidence photo attached' }]);
+        this.setState({ photos: p, events: events });
+      },
+      dealerUpcoming: dealerUpcoming,
+      reasonOpen: !!s.reasonFor,
+      closeReason: () => this.setState({ reasonFor: null, reasonText: '' }),
+      reasons: REASONS.map((r) => ({ label: r, onClick: () => this.sendReason(r) })),
+      reasonText: s.reasonText,
+      setReasonText: (e) => this.setState({ reasonText: e.target.value }, false),
+      submitReasonText: () => {
+        const t = s.reasonText.trim();
+        if (!t) { this.flash('Write a reason first'); return; }
+        this.sendReason(t);
+      },
+      adhocOpen: s.adhocOpen,
+      annualMode: s.annualMode,
+      adhocTitle: s.annualMode ? 'Add annual task' : 'Add task',
+      adhocAction: s.annualMode ? 'Add annual task' : 'Add task',
+      openAdhoc: () => this.setState({ adhocOpen: true, annualMode: s.hqTab === 'plan', adhocDealer: s.hqTab === 'detail' ? (s.selected || MY) : 'all' }),
+      closeAdhoc: () => this.setState({ adhocOpen: false, annualMode: false }),
+      adhocDealer: s.adhocDealer, adhocName: s.adhocName, adhocDue: s.adhocDue,
+      setAdhocDealer: (e) => this.setState({ adhocDealer: e.target.value }, false),
+      setAdhocName: (e) => this.setState({ adhocName: e.target.value }, false),
+      setAdhocDue: (e) => this.setState({ adhocDue: e.target.value }, false),
+      dealerOptions: [{ id: 'all', name: 'All dealerships (' + this.dealers.length + ')' }].concat(this.dealers.map((d) => ({ id: d.id, name: d.company + ' · ' + d.rbc }))),
+      editorOpen: s.editorOpen, editorType: s.editorType,
+      editorTitle: s.editorType === 'task' ? 'Edit task' : 'Edit company',
+      editorName: s.editorName, editorDue: s.editorDue, editorCategory: s.editorCategory, editorDesc: s.editorDesc,
+      editorCompany: s.editorCompany, editorRbc: s.editorRbc,
+      rbcOptions: MANAGERS,
+      setEditorName: (e) => this.setState({ editorName: e.target.value }, false),
+      setEditorDue: (e) => this.setState({ editorDue: e.target.value }, false),
+      setEditorCategory: (e) => this.setState({ editorCategory: e.target.value }, false),
+      setEditorDesc: (e) => this.setState({ editorDesc: e.target.value }, false),
+      setEditorCompany: (e) => this.setState({ editorCompany: e.target.value }, false),
+      setEditorRbc: (e) => this.setState({ editorRbc: e.target.value }, false),
+      closeEditor: () => this.setState({ editorOpen: false }),
+      saveEditor: () => this.saveEditor(),
+      addAdhoc: () => {
+        const name = s.adhocName.trim();
+        if (!name) { this.flash('Name the task first'); return; }
+        if (!s.adhocDue) { this.flash('Choose a due date'); return; }
+        const id = 'a' + Date.now();
+        const base = { id: id, name: name, category: s.annualMode ? 'Ketju' : 'Ad-hoc', due: s.adhocDue, adhoc: !s.annualMode, annual: s.annualMode, m: planMonthOf(s.adhocDue), span: 1, short: 'New task', createdAt: new Date().toISOString() };
+        if (s.annualMode) {
+          const annualTasks = (s.annualTasks || []).concat([base]);
+          const events = Object.assign({}, s.events);
+          this.dealers.forEach((dealer) => {
+            const key = dealer.id + ':' + id;
+            events[key] = [{ at: base.createdAt, actor: 'HQ', text: 'Task created: “' + name + '” due ' + base.due }];
+          });
+          this.setState({ annualTasks: annualTasks, events: events, adhocOpen: false, annualMode: false, adhocName: '' });
+          this.flash('Annual task added for all dealerships');
+          return;
+        }
+        const all = s.adhocDealer === 'all';
+        const added = all
+          ? this.dealers.map((d) => Object.assign({}, base, { dealerId: d.id }))
+          : [Object.assign({}, base, { dealerId: s.adhocDealer })];
+        const events = Object.assign({}, s.events);
+        added.forEach((item) => { events[item.dealerId + ':' + id] = [{ at: base.createdAt, actor: 'HQ', text: 'Task created: “' + name + '” due ' + base.due }]; });
+        this.setState({ adhoc: s.adhoc.concat(added), events: events, adhocOpen: false, adhocName: '' });
+        this.flash(all ? 'Task added for all ' + this.dealers.length + ' dealerships' : 'Task added · company notified');
+      },
+      toast: s.toast
+    };
+  }
+}
+
+</script>
+</body>
+</html>

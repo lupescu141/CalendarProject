@@ -1,0 +1,5 @@
+{
+  "name": "calendarproject-desktop-dev",
+  "version": "1.0.0",
+  "main": "../dist-electron/electron/main.js"
+}
