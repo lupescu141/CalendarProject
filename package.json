@@ -4,9 +4,13 @@
   "version": "1.0.0",
   "scripts": {
     "start": "expo start",
+    "build:web": "expo export --platform web --output-dir dist",
+    "build:electron": "tsc -p tsconfig.electron.json",
+    "desktop": "npm run build:web && npm run build:electron && electron electron",
+    "dist:win": "npm run build:web && npm run build:electron && electron-builder --win nsis",
     "reset-project": "node ./scripts/reset-project.js",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
     "web": "expo start --web",
     "api": "tsx scripts/api.ts",
     "lint": "expo lint",
@@ -37,7 +41,6 @@
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "react-native": "0.88.1",
-    "react-native-gesture-handler": "~3.3.0",
     "react-native-keyboard-controller": "1.22.7",
     "react-native-reanimated": "4.7.1",
     "react-native-safe-area-context": "~5.10.1",
@@ -48,10 +51,51 @@
   "devDependencies": {
     "@types/node": "^26.6.2",
     "@types/react": "~19.3.0",
+    "electron": "^41.0.0",
+    "electron-builder": "^26.0.12",
     "eslint": "^9.25.0",
     "eslint-config-expo": "~58.0.4",
     "tsx": "^4.23.15",
     "typescript": "~6.0.3"
   },
-  "private": true
+  "private": true,
+  "build": {
+    "appId": "com.calendarproject.desktop",
+    "productName": "CalendarProject",
+    "artifactName": "${productName} Setup.${ext}",
+    "extraMetadata": {
+      "main": "dist-electron/electron/main.js"
+    },
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist-electron/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "dist",
+        "to": "web",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
 }

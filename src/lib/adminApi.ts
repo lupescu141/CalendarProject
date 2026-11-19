@@ -53,6 +53,13 @@ export interface AssignmentAttachmentDownload extends AssignmentAttachment {
 }
 
 function getApiUrl() {
+  if (Platform.OS === "web" && typeof window !== "undefined") {
+    const embeddedApiUrl = new URLSearchParams(window.location.search).get("apiUrl");
+    if (embeddedApiUrl) {
+      return embeddedApiUrl.replace(/\/$/, "");
+    }
+  }
+
   if (process.env.EXPO_PUBLIC_API_URL) {
     return process.env.EXPO_PUBLIC_API_URL.replace(/\/$/, "");
   }
@@ -83,7 +90,7 @@ export async function apiRequest<T>(path: string, options?: RequestInit): Promis
       ...options,
     });
   } catch {
-    throw new Error(`Could not reach ${url}. Ensure npm run api is running and the device is on the same network.`);
+    throw new Error(`Could not reach ${url}. Check the API and database connection, then restart the app.`);
   }
   const body = await response.json().catch(() => null);
 

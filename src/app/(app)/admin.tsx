@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Modal,
   Pressable,
@@ -8,11 +8,13 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
+  type ScrollViewInstance,
 } from "react-native";
-import { useSession } from "../../ctx";
-import { SignOutPrompt } from "../../components/sign-out-prompt";
 import { AssignmentAttachments } from "../../components/assignment-attachments";
+import { SignOutPrompt } from "../../components/sign-out-prompt";
+import { useSession } from "../../ctx";
 import {
   acknowledgeAssignmentNotification,
   createAssignment,
@@ -74,6 +76,7 @@ function formatCreatedDate(value: string) {
 export default function Admin() {
   const router = useRouter();
   const { currentUser, signOut } = useSession();
+  const { width: windowWidth } = useWindowDimensions();
   const [users, setUsers] = useState<UserRecord[]>([]);
   const [selectedUser, setSelectedUser] = useState<UserRecord | null>(null);
   const [assignmentName, setAssignmentName] = useState("");
@@ -105,6 +108,10 @@ export default function Admin() {
   const [directoryLayout, setDirectoryLayout] = useState<"table" | "grid">(
     "table",
   );
+  const [currentDate, setCurrentDate] = useState(() => new Date());
+  const [timelineMonthWidth, setTimelineMonthWidth] = useState(0);
+  const [timelineViewportWidth, setTimelineViewportWidth] = useState(0);
+  const timelineScrollRef = useRef<ScrollViewInstance>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -116,7 +123,7 @@ export default function Admin() {
         if (mounted) {
           setLoadError(true);
           setMessage(
-            "Could not connect to the admin API. Start it with npm run api.",
+            "Could not connect to the admin API. Check the database connection, then restart the app.",
           );
         }
       })
@@ -132,6 +139,11 @@ export default function Admin() {
     if (currentUser?.admin) return;
     router.replace("/(app)/calendar");
   }, [currentUser, router]);
+
+  useEffect(() => {
+    const interval = setInterval(() => setCurrentDate(new Date()), 60_000);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     if (!expandedUser) return;
@@ -359,12 +371,49 @@ export default function Admin() {
   const overdueAssignmentCount = assignments.filter(
     (assignment) => assignment.status === 2,
   ).length;
-  const timelineYear = new Date().getFullYear();
+  const timelineYear = currentDate.getFullYear();
+  const todayMonth = currentDate.getMonth();
+  const todayDay = currentDate.getDate();
+  const isCompactTimeline = windowWidth < 600;
+  const timelineTaskWidth = isCompactTimeline ? 130 : 190;
+  const timelineMinWidth = isCompactTimeline ? 720 : 860;
+  const todayMonthProgress =
+    todayMonth +
+    (todayDay - 0.5) / new Date(timelineYear, todayMonth + 1, 0).getDate();
   const timelineMonths = Array.from({ length: 12 }, (_, index) =>
     new Date(timelineYear, index, 1)
       .toLocaleDateString("en-US", { month: "short" })
       .toUpperCase(),
   );
+
+  useEffect(() => {
+    if (
+      directoryLayout !== "grid" ||
+      timelineMonthWidth === 0 ||
+      timelineViewportWidth === 0
+    ) {
+      return;
+    }
+
+    timelineScrollRef.current?.scrollTo({
+      x: Math.max(
+        0,
+        timelineTaskWidth +
+          (timelineMonthWidth * todayMonthProgress) / 12 -
+          timelineViewportWidth / 2,
+      ),
+      animated: false,
+    });
+  }, [
+    directoryLayout,
+    todayDay,
+    todayMonth,
+    timelineMonthWidth,
+    timelineTaskWidth,
+    timelineViewportWidth,
+    timelineYear,
+    todayMonthProgress,
+  ]);
 
   return currentUser?.admin ? (
     <ScrollView
@@ -666,13 +715,37 @@ export default function Admin() {
                           ))}
                         </View>
                       </View>
-                      <ScrollView horizontal showsHorizontalScrollIndicator>
-                        <View style={styles.timeline}>
+                      <ScrollView
+                        horizontal
+                        onLayout={({ nativeEvent }) =>
+                          setTimelineViewportWidth(nativeEvent.layout.width)
+                        }
+                        ref={timelineScrollRef}
+                        showsHorizontalScrollIndicator
+                      >
+                        <View
+                          style={[
+                            styles.timeline,
+                            { minWidth: timelineMinWidth },
+                          ]}
+                        >
                           <View style={styles.timelineHeaderRow}>
-                            <Text style={styles.timelineTaskHeader}>
+                            <Text
+                              style={[
+                                styles.timelineTaskHeader,
+                                { width: timelineTaskWidth },
+                              ]}
+                            >
                               ASSIGNMENT
                             </Text>
-                            <View style={styles.timelineMonthHeader}>
+                            <View
+                              onLayout={({ nativeEvent }) =>
+                                setTimelineMonthWidth(
+                                  nativeEvent.layout.width,
+                                )
+                              }
+                              style={styles.timelineMonthHeader}
+                            >
                               {timelineMonths.map((month, index) => (
                                 <Text
                                   key={`${month}-${index}`}
@@ -716,7 +789,10 @@ export default function Admin() {
                                   onPress={() =>
                                     openAssignmentDetails(assignment)
                                   }
-                                  style={styles.timelineTask}
+                                  style={[
+                                    styles.timelineTask,
+                                    { width: timelineTaskWidth },
+                                  ]}
                                 >
                                   <Text
                                     numberOfLines={1}
@@ -778,6 +854,20 @@ export default function Admin() {
                               </View>
                             );
                           })}
+                          {timelineMonthWidth > 0 && (
+                            <View
+                              pointerEvents="none"
+                              style={[
+                                styles.timelineTodayLine,
+                                {
+                                  left:
+                                    timelineTaskWidth +
+                                    (timelineMonthWidth * todayMonthProgress) /
+                                      12,
+                                },
+                              ]}
+                            />
+                          )}
                         </View>
                       </ScrollView>
                       <Text style={styles.timelineHint}>
@@ -1679,7 +1769,7 @@ const styles = mergeStyleSheets(
     legendItem: { alignItems: "center", flexDirection: "row", gap: 4 },
     legendDot: { borderRadius: 4, height: 8, width: 8 },
     legendLabel: { fontSize: 8, fontWeight: "700" },
-    timeline: { minWidth: 860 },
+    timeline: { minWidth: 860, position: "relative" },
     timelineHeaderRow: {
       alignItems: "center",
       flexDirection: "row",
@@ -1718,6 +1808,14 @@ const styles = mergeStyleSheets(
       position: "absolute",
       top: 5,
       width: 7,
+    },
+    timelineTodayLine: {
+      backgroundColor: "#ED1C24",
+      bottom: 0,
+      position: "absolute",
+      top: 0,
+      width: 2,
+      zIndex: 2,
     },
     timelineHint: { fontSize: 10, marginTop: 10 },
   }),
@@ -1808,7 +1906,7 @@ const styles = mergeStyleSheets(
     inputLabel: { color: "#777777" },
     saveButton: { backgroundColor: "#ED1C24" },
     notifyButton: { backgroundColor: "#ED1C24", borderColor: "#ED1C24" },
-    notificationMessage: { backgroundColor: "#FFF0EE", borderColor: "#F0C2BE" },
+    notificationMessage: { backgroundColor: "#FFF0EE", borderColor: "#cc6666" },
     saveText: { color: "#FFFFFF" },
     timelineCard: {
       backgroundColor: "#FFFFFF",
@@ -1840,7 +1938,7 @@ const styles = mergeStyleSheets(
     legendItem: { alignItems: "center", flexDirection: "row", gap: 4 },
     legendDot: { borderRadius: 4, height: 8, width: 8 },
     legendLabel: { color: "#666666", fontSize: 8, fontWeight: "700" },
-    timeline: { minWidth: 860 },
+    timeline: { minWidth: 860, position: "relative" },
     timelineHeaderRow: {
       alignItems: "center",
       borderBottomColor: "#DADADA",
@@ -1897,6 +1995,14 @@ const styles = mergeStyleSheets(
       position: "absolute",
       top: 5,
       width: 7,
+    },
+    timelineTodayLine: {
+      backgroundColor: "#ED1C24",
+      bottom: 0,
+      position: "absolute",
+      top: 0,
+      width: 2,
+      zIndex: 2,
     },
     timelineHint: { color: "#777777", fontSize: 10, marginTop: 10 },
   }),

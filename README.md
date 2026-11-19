@@ -15,9 +15,6 @@ This is an [Expo](https://expo.dev) project created with [`create-expo-app`](htt
    ```bash
    npx expo start
    ```
-   ```bash
-   npm run api
-    ```
 
 In the output, you'll find options to open the app in a
 
@@ -89,3 +86,14 @@ set `EXPO_PUBLIC_API_URL` to the computer's LAN address before starting Expo.
 
 The helper uses parameterized queries. Store hashed passwords in `users.password`
 before calling `users.create` or `users.update`.
+
+## Windows desktop app
+
+The desktop app bundles the exported Expo interface and starts the API automatically. A MySQL server is still required.
+
+```bash
+npm run desktop
+npm run dist:win
+```
+
+The Windows installer is created at `release/CalendarProject Setup.exe`. Configure `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_USER`, `MYSQL_PASSWORD`, and `MYSQL_DATABASE` in the environment before launching the app.
